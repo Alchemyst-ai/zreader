@@ -1,0 +1,204 @@
+/*
+ * zreader/styles.css — standalone, precompiled stylesheet for
+ * apps that don't use Tailwind. (Tailwind v4 apps: import
+ * "zreader/tailwind.css" instead and your shadcn theme applies.)
+ *
+ * - No global preflight: a reset is scoped to reader elements and overlays.
+ * - shadcn tokens are namespaced (--zr-*) so they never clash with host
+ *   variables. Override them in your own CSS, e.g. `:root { --zr-primary: … }`.
+ * - Themes: next-themes toggles `.light` / `.dark` / `.sepia` on <html>.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+@import "./reader.css";
+
+@plugin "@tailwindcss/typography";
+
+@source "./react";
+@source "./editor";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--zr-background);
+  --color-foreground: var(--zr-foreground);
+  --color-card: var(--zr-card);
+  --color-card-foreground: var(--zr-card-foreground);
+  --color-popover: var(--zr-popover);
+  --color-popover-foreground: var(--zr-popover-foreground);
+  --color-primary: var(--zr-primary);
+  --color-primary-foreground: var(--zr-primary-foreground);
+  --color-secondary: var(--zr-secondary);
+  --color-secondary-foreground: var(--zr-secondary-foreground);
+  --color-muted: var(--zr-muted);
+  --color-muted-foreground: var(--zr-muted-foreground);
+  --color-accent: var(--zr-accent);
+  --color-accent-foreground: var(--zr-accent-foreground);
+  --color-destructive: var(--zr-destructive);
+  --color-border: var(--zr-border);
+  --color-input: var(--zr-input);
+  --color-ring: var(--zr-ring);
+  --radius-sm: calc(var(--zr-radius) - 4px);
+  --radius-md: calc(var(--zr-radius) - 2px);
+  --radius-lg: var(--zr-radius);
+  --radius-xl: calc(var(--zr-radius) + 4px);
+  --font-serif: var(--zr-font-serif);
+  --font-sans: var(--zr-font-sans);
+  --font-mono: var(--zr-font-mono);
+}
+
+:root {
+  --zr-radius: 0.625rem;
+  --zr-font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --zr-font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --zr-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --zr-background: oklch(1 0 0);
+  --zr-foreground: oklch(0.145 0 0);
+  --zr-card: oklch(1 0 0);
+  --zr-card-foreground: oklch(0.145 0 0);
+  --zr-popover: oklch(1 0 0);
+  --zr-popover-foreground: oklch(0.145 0 0);
+  --zr-primary: oklch(0.205 0 0);
+  --zr-primary-foreground: oklch(0.985 0 0);
+  --zr-secondary: oklch(0.97 0 0);
+  --zr-secondary-foreground: oklch(0.205 0 0);
+  --zr-muted: oklch(0.97 0 0);
+  --zr-muted-foreground: oklch(0.556 0 0);
+  --zr-accent: oklch(0.97 0 0);
+  --zr-accent-foreground: oklch(0.205 0 0);
+  --zr-destructive: oklch(0.577 0.245 27.325);
+  --zr-border: oklch(0.922 0 0);
+  --zr-input: oklch(0.922 0 0);
+  --zr-ring: oklch(0.708 0 0);
+}
+
+.sepia {
+  --zr-background: oklch(0.962 0.024 86);
+  --zr-foreground: oklch(0.31 0.032 58);
+  --zr-card: oklch(0.975 0.018 86);
+  --zr-card-foreground: oklch(0.31 0.032 58);
+  --zr-popover: oklch(0.975 0.018 86);
+  --zr-popover-foreground: oklch(0.31 0.032 58);
+  --zr-primary: oklch(0.42 0.06 55);
+  --zr-primary-foreground: oklch(0.97 0.02 86);
+  --zr-secondary: oklch(0.925 0.03 82);
+  --zr-secondary-foreground: oklch(0.31 0.032 58);
+  --zr-muted: oklch(0.925 0.03 82);
+  --zr-muted-foreground: oklch(0.5 0.035 60);
+  --zr-accent: oklch(0.91 0.035 80);
+  --zr-accent-foreground: oklch(0.31 0.032 58);
+  --zr-border: oklch(0.86 0.035 76);
+  --zr-input: oklch(0.86 0.035 76);
+  --zr-ring: oklch(0.62 0.05 60);
+}
+
+.dark {
+  --zr-background: oklch(0.145 0 0);
+  --zr-foreground: oklch(0.985 0 0);
+  --zr-card: oklch(0.205 0 0);
+  --zr-card-foreground: oklch(0.985 0 0);
+  --zr-popover: oklch(0.205 0 0);
+  --zr-popover-foreground: oklch(0.985 0 0);
+  --zr-primary: oklch(0.922 0 0);
+  --zr-primary-foreground: oklch(0.205 0 0);
+  --zr-secondary: oklch(0.269 0 0);
+  --zr-secondary-foreground: oklch(0.985 0 0);
+  --zr-muted: oklch(0.269 0 0);
+  --zr-muted-foreground: oklch(0.708 0 0);
+  --zr-accent: oklch(0.269 0 0);
+  --zr-accent-foreground: oklch(0.985 0 0);
+  --zr-destructive: oklch(0.704 0.191 22.216);
+  --zr-border: oklch(1 0 0 / 10%);
+  --zr-input: oklch(1 0 0 / 15%);
+  --zr-ring: oklch(0.556 0 0);
+}
+
+/* sonner reads shadcn's un-namespaced names on its own element. */
+[data-sonner-toaster] {
+  --popover: var(--zr-popover);
+  --popover-foreground: var(--zr-popover-foreground);
+  --border: var(--zr-border);
+  --radius: var(--zr-radius);
+}
+
+:root {
+  --zr-placeholder: var(--zr-muted-foreground);
+  --zr-accent-color: var(--zr-primary);
+}
+
+/*
+ * Host isolation + scoped preflight. Applied only to the reader and its
+ * portalled overlays. `all: revert` drops any element styles the host page
+ * set (a site-wide `footer {position: absolute}` or `h2 {font-size: 5rem}`),
+ * then the subset of Tailwind's preflight that shadcn relies on is applied.
+ * Element-level specificity (0,0,1): host element rules lose by source order,
+ * reader utilities (0,1,0) still win. SVG is excluded so lucide's presentation
+ * attributes survive.
+ */
+@layer base {
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper], [data-sonner-toaster])
+    :is(div, span, header, footer, main, nav, section, article, aside, h1, h2, h3, h4, h5, h6, p, a, em, strong, small, ul, ol, li, dl, dt, dd, blockquote, figure, figcaption, pre, code, kbd, hr, table, thead, tbody, tr, th, td, label, button, input, textarea, select, fieldset, legend, img),
+  :where([data-zr-reader], [data-slot]) {
+    all: revert;
+    box-sizing: border-box;
+    border: 0 solid var(--zr-border);
+    margin: 0;
+    padding: 0;
+    outline-color: color-mix(in oklab, var(--zr-ring) 50%, transparent);
+  }
+  /* From Tailwind's preflight: `hidden` must win over display utilities (inactive tab panels, etc.). */
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) [hidden]:where(:not([hidden="until-found"])),
+  [data-slot][hidden]:where(:not([hidden="until-found"])) {
+    display: none !important;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(svg, svg *) {
+    box-sizing: border-box;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(h1, h2, h3, h4, h5, h6) {
+    font-size: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(button, input, select, textarea) {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(button, [role="button"]) {
+    cursor: pointer;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(a) {
+    color: inherit;
+    text-decoration: inherit;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(ol, ul) {
+    list-style: none;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(img, svg, video, canvas, iframe) {
+    display: block;
+    vertical-align: middle;
+    max-width: 100%;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(textarea) {
+    resize: vertical;
+  }
+  :where([data-zr-reader], [data-slot], [data-radix-popper-content-wrapper]) :is(input, textarea)::placeholder {
+    opacity: 1;
+    color: var(--zr-muted-foreground);
+  }
+  [data-zr-reader] {
+    font-family: var(--zr-font-sans);
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  [data-zr-reader] ::selection {
+    background-color: color-mix(in oklab, var(--zr-primary) 22%, transparent);
+  }
+}

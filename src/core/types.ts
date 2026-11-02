@@ -1,0 +1,144 @@
+/** Shared, framework-agnostic data model for zreader. */
+
+export type ISODate = string;
+
+/** W3C Web Annotation-style anchor. Offsets are measured over the chapter root's text. */
+export interface Anchor {
+  /** `data-block-id` of the block containing the start of the selection. */
+  blockId: string;
+  /** Offsets relative to the start block's text (fast path). */
+  blockStart: number;
+  /** TextPositionSelector over the whole chapter text. */
+  start: number;
+  end: number;
+  /** TextQuoteSelector. */
+  exact: string;
+  prefix: string;
+  suffix: string;
+  /** Content hash of the chapter when the anchor was created. */
+  contentHash?: string;
+}
+
+export interface Highlight {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  anchor: Anchor;
+  color: string;
+  note?: string;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+export interface Bookmark {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  /** Absent for whole-chapter bookmarks. */
+  blockId?: string;
+  label?: string;
+  excerpt?: string;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+export interface ChapterProgress {
+  chapterId: string;
+  blockId?: string;
+  /** 0..1 */
+  percent: number;
+  completed: boolean;
+  updatedAt: ISODate;
+}
+
+export interface BookProgress {
+  bookId: string;
+  chapters: Record<string, ChapterProgress>;
+  last?: { chapterId: string; blockId?: string; updatedAt: ISODate };
+}
+
+export type PadScope =
+  | { kind: "global" }
+  | { kind: "book"; bookId: string }
+  | { kind: "chapter"; bookId: string; chapterId: string };
+
+export type PadScopeKind = PadScope["kind"];
+
+export interface Pad {
+  /** Markdown is the interchange/source format. */
+  markdown: string;
+  /** Lossless editor JSON cache. Cleared whenever `markdown` is changed outside the editor. */
+  json?: unknown;
+  updatedAt: ISODate;
+}
+
+export type ThemeName = "system" | "light" | "sepia" | "dark";
+export type Measure = "narrow" | "normal" | "wide";
+export type FontFamily = "serif" | "sans" | "mono";
+export type TextSize = "sm" | "base" | "lg" | "xl" | "2xl";
+export type Leading = "tight" | "normal" | "relaxed";
+
+export const THEMES = ["system", "light", "sepia", "dark"] as const satisfies readonly ThemeName[];
+export const TEXT_SIZES = ["sm", "base", "lg", "xl", "2xl"] as const satisfies readonly TextSize[];
+export const LEADINGS = ["tight", "normal", "relaxed"] as const satisfies readonly Leading[];
+export const MEASURES = ["narrow", "normal", "wide"] as const satisfies readonly Measure[];
+export const FONT_FAMILIES = ["serif", "sans", "mono"] as const satisfies readonly FontFamily[];
+/** The palette the UI ships styles for (`::highlight(zr-<color>)`). */
+export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange"] as const;
+export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
+
+export interface ReaderSettings {
+  textSize: TextSize;
+  leading: Leading;
+  measure: Measure;
+  fontFamily: FontFamily;
+  /** Tap a sentence to highlight it with the default colour. */
+  highlightMode: boolean;
+  updatedAt: ISODate;
+}
+
+/** Serializable client options (the `reader` half of reader.config.ts). */
+export interface ReaderClientOptions {
+  storagePrefix: string;
+  highlightColors: HighlightColor[];
+  defaultHighlightColor: HighlightColor;
+  scratchpad: { enabled: boolean; scopes: PadScopeKind[] };
+  /** Themes offered in the UI. Applied as a class on <html> via next-themes. */
+  themes: ThemeName[];
+  defaultTheme: ThemeName;
+  defaultSettings: Omit<ReaderSettings, "updatedAt">;
+  progress: { completeAt: number; saveIntervalMs: number };
+  /** Show a "your notes only live in this browser" reminder. */
+  backupReminder: boolean;
+  /** Base path used to build links back into the reader (e.g. quote-to-pad). */
+  basePath: string;
+}
+
+export interface TocEntry {
+  id: string;
+  depth: number;
+  text: string;
+}
+
+export interface ChapterMeta {
+  id: string;
+  title: string;
+  order: number;
+  description?: string;
+  /** Section the chapter belongs to, e.g. "Part I · For the Builders". Groups the contents list. */
+  part?: string;
+  /** Eyebrow shown above the title, e.g. "Chapter 5" or "Appendix A". */
+  label?: string;
+  /** Short marker for lists, e.g. "5" or "A". */
+  number?: string;
+}
+
+export interface BookMeta {
+  id: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  description?: string;
+  cover?: string;
+  chapters: ChapterMeta[];
+}

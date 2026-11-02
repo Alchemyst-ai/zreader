@@ -1,0 +1,116 @@
+/*
+ * zreader — reader-specific rules shared by both stylesheets.
+ * Only things utilities can't express live here: ::highlight() painting,
+ * ProseMirror internals, and scroll offsets. All colours are tokens.
+ */
+
+/* ---------------------------------------------------- highlight palette */
+:root {
+  --zr-hl-yellow: oklch(0.93 0.14 98 / 0.7);
+  --zr-hl-green: oklch(0.9 0.12 150 / 0.6);
+  --zr-hl-blue: oklch(0.88 0.08 235 / 0.65);
+  --zr-hl-pink: oklch(0.88 0.1 350 / 0.6);
+  --zr-hl-purple: oklch(0.86 0.09 295 / 0.6);
+  --zr-hl-orange: oklch(0.89 0.11 65 / 0.65);
+  --zr-hl-active: oklch(0.82 0.14 250 / 0.55);
+}
+.dark {
+  --zr-hl-yellow: oklch(0.75 0.14 95 / 0.38);
+  --zr-hl-green: oklch(0.7 0.13 150 / 0.35);
+  --zr-hl-blue: oklch(0.68 0.12 240 / 0.4);
+  --zr-hl-pink: oklch(0.68 0.14 350 / 0.36);
+  --zr-hl-purple: oklch(0.66 0.14 295 / 0.38);
+  --zr-hl-orange: oklch(0.72 0.14 60 / 0.36);
+  --zr-hl-active: oklch(0.7 0.15 250 / 0.5);
+}
+
+::highlight(zr-yellow) { background-color: var(--zr-hl-yellow); }
+::highlight(zr-green) { background-color: var(--zr-hl-green); }
+::highlight(zr-blue) { background-color: var(--zr-hl-blue); }
+::highlight(zr-pink) { background-color: var(--zr-hl-pink); }
+::highlight(zr-purple) { background-color: var(--zr-hl-purple); }
+::highlight(zr-orange) { background-color: var(--zr-hl-orange); }
+::highlight(zr-active) { background-color: var(--zr-hl-active); }
+
+/* Block/heading targets land below the sticky header. */
+[data-zr-reader] [data-block-id],
+[data-zr-reader] :is(h1, h2, h3, h4, h5, h6)[id] {
+  scroll-margin-top: 5rem;
+}
+
+/* ----------------------------------------------------- scratchpad editor */
+.zr-editor .ProseMirror {
+  min-height: 100%;
+}
+.zr-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--zr-placeholder, currentColor);
+  opacity: 0.55;
+}
+.zr-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.zr-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+  padding-left: 0;
+}
+.zr-editor ul[data-type="taskList"] li > label {
+  flex: none;
+  margin-top: 0.3em;
+  user-select: none;
+}
+.zr-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--zr-accent-color, currentColor);
+  cursor: pointer;
+}
+.zr-editor ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.zr-editor ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.zr-editor ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.zr-editor ul[data-type="taskList"] ul[data-type="taskList"] {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-zr-reader] *,
+  [data-zr-reader] *::before,
+  [data-zr-reader] *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* GFM task lists in chapters (disabled checkboxes from the sanitizer). */
+[data-zr-reader] :is(ul.contains-task-list) {
+  list-style: none;
+  padding-inline-start: 0;
+}
+[data-zr-reader] li.task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding-inline-start: 0;
+}
+[data-zr-reader] li.task-list-item > input[type="checkbox"] {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin: 0;
+  translate: 0 0.12em;
+  accent-color: var(--zr-accent-color, currentColor);
+}

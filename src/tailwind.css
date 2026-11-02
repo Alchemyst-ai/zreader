@@ -1,0 +1,41 @@
+/*
+ * zreader/tailwind.css — for Tailwind v4 + shadcn apps.
+ *
+ *   @import "tailwindcss";
+ *   @import "zreader/tailwind.css";
+ *
+ * Your own shadcn tokens (--background, --primary, …) style the reader.
+ * Tailwind scans the package's compiled components via @source below.
+ */
+@import "./reader.css";
+
+@plugin "@tailwindcss/typography";
+
+@source "./react";
+@source "./editor";
+
+/* Sepia reading theme in your token names. */
+.sepia {
+  --background: oklch(0.962 0.024 86);
+  --foreground: oklch(0.31 0.032 58);
+  --card: oklch(0.975 0.018 86);
+  --card-foreground: oklch(0.31 0.032 58);
+  --popover: oklch(0.975 0.018 86);
+  --popover-foreground: oklch(0.31 0.032 58);
+  --primary: oklch(0.42 0.06 55);
+  --primary-foreground: oklch(0.97 0.02 86);
+  --secondary: oklch(0.925 0.03 82);
+  --secondary-foreground: oklch(0.31 0.032 58);
+  --muted: oklch(0.925 0.03 82);
+  --muted-foreground: oklch(0.5 0.035 60);
+  --accent: oklch(0.91 0.035 80);
+  --accent-foreground: oklch(0.31 0.032 58);
+  --border: oklch(0.86 0.035 76);
+  --input: oklch(0.86 0.035 76);
+  --ring: oklch(0.62 0.05 60);
+}
+
+:root {
+  --zr-placeholder: var(--muted-foreground);
+  --zr-accent-color: var(--primary);
+}

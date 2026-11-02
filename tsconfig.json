@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2023"
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/react/*"
+      ],
+      "zreader": [
+        "./src/core/index.ts"
+      ],
+      "zreader/config": [
+        "./src/config/index.ts"
+      ],
+      "zreader/react": [
+        "./src/react/index.ts"
+      ],
+      "zreader/editor": [
+        "./src/editor/index.tsx"
+      ],
+      "zreader/content": [
+        "./src/content/index.ts"
+      ],
+      "zreader/virtual-config": [
+        "./src/virtual-config/index.ts"
+      ],
+      "zreader/user-config": [
+        "./src/user-config/index.ts"
+      ],
+      "zreader/next/client": [
+        "./src/next/client/index.tsx"
+      ],
+      "zreader/next/server": [
+        "./src/next/server/index.tsx"
+      ],
+      "zreader/rehype": [
+        "./src/rehype/index.ts"
+      ]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "src",
+    "test",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
+}
