@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - New `zreader/agent`: `createAgentHandler()` serves agent-readable Markdown twins of every page (`/books/<book>/<chapter>.md`, `/books/<book>.md`, `/books.md`) and `/llms.txt`. MDX is cleaned up and HTML is converted to Markdown.
 - New `zreader/agent/react`: `<CopyReference />` copies a prompt that points an AI agent at the current chapter, with a menu to open it in ChatGPT, Claude or Grok.
