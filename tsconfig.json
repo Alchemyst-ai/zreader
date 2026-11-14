@@ -53,6 +53,12 @@
       ],
       "zreader/rehype": [
         "./src/rehype/index.ts"
+      ],
+      "zreader/agent": [
+        "./src/agent/index.ts"
+      ],
+      "zreader/agent/react": [
+        "./src/agent/react/index.ts"
       ]
     },
     "baseUrl": "."

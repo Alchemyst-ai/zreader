@@ -67,15 +67,28 @@ export interface ReaderProps {
    * `<><Logo /><ReaderTitle /></>`.
    */
   header?: HeaderSlot;
+  /**
+   * Buttons for the right side of the top bar, before the bookmark toggle,
+   * e.g. `<CopyReference />` from `zreader/agent/react`. Defaults to the
+   * provider's `readerActions`; `null` hides them.
+   */
+  actions?: ReactNode;
   /** Where the back button goes. Defaults to the book page. */
   backHref?: string;
   className?: string;
 }
 
-const ReaderChapterContext = createContext<{ book: BookMeta; chapter: ChapterMeta } | null>(null);
+export interface ReaderChapterValue {
+  book: BookMeta;
+  chapter: ChapterMeta;
+  /** Page URL within this book (the reader's `hrefFor`): `href()` is the book, `href(chapterId)` a chapter. */
+  href: (chapterId?: string, hash?: string) => string;
+}
 
-/** The book and chapter of the surrounding <Reader> (for custom header content). */
-export function useReaderChapter(): { book: BookMeta; chapter: ChapterMeta } {
+const ReaderChapterContext = createContext<ReaderChapterValue | null>(null);
+
+/** The book and chapter of the surrounding <Reader> (for custom header content and actions). */
+export function useReaderChapter(): ReaderChapterValue {
   const ctx = useContext(ReaderChapterContext);
   if (!ctx) throw new Error("zreader: useReaderChapter() must be used inside <Reader>.");
   return ctx;
@@ -174,6 +187,7 @@ export function Reader({
   Link: LinkProp,
   hrefFor,
   header,
+  actions,
   backHref,
   className,
 }: ReaderProps) {
@@ -189,7 +203,7 @@ export function Reader({
   const next = nextArg !== undefined ? nextArg : chapterIndex >= 0 ? (book.chapters[chapterIndex + 1] ?? null) : null;
   const Link = LinkProp ?? library.Link;
   const slot = header !== undefined ? header : library.headerSlot;
-  const chapterCtx = useMemo(() => ({ book, chapter }), [book, chapter]);
+  const topActions = actions !== undefined ? actions : library.readerActions;
   const [settings, updateSettings] = useSettings();
   const isDesktop = useIsDesktop();
   const bookmarks = useBookmarks(book.id);
@@ -197,6 +211,7 @@ export function Reader({
 
   const build = hrefFor ?? library.href;
   const href = useCallback((chapterId?: string, hash?: string) => build(book.id, chapterId, hash), [build, book.id]);
+  const chapterCtx = useMemo<ReaderChapterValue>(() => ({ book, chapter, href }), [book, chapter, href]);
 
   // Callback-ref state: the article remounts when the layout switches (mobile ↔ desktop).
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
@@ -346,6 +361,7 @@ export function Reader({
         <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
           <HeaderContent slot={slot} book={book} chapter={chapter} />
         </div>
+        {topActions}
         <IconToggle label={chapterBookmarks.length ? "Remove bookmark" : "Bookmark this place"} pressed={chapterBookmarks.length > 0} onPressedChange={toggleBookmark} className="data-[state=on]:[&_svg]:fill-current">
           <BookmarkIcon />
         </IconToggle>

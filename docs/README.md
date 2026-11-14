@@ -1,0 +1,50 @@
+# zreader documentation
+
+zreader is a localStorage-first, mobile-first book reader for React. Readers get bookmarks, reading progress, sentence highlights with notes, a Markdown scratchpad and reading settings. All reader data stays in the browser. An optional content layer, Next.js adapter and agent layer turn a folder of Markdown, MDX and HTML files into a full reading site that AI agents can read too.
+
+## Start here
+
+| If you want to… | Read |
+| --- | --- |
+| Get a reader running in Next.js or React | [Getting started](./getting-started.md) |
+| Understand how the pieces fit | [Concepts](./concepts.md) |
+
+## Guides
+
+| Guide | Covers |
+| --- | --- |
+| [Content layer](./content.md) | `content/books/**`, `book.json`, frontmatter, ordering, drafts, caching, the content API |
+| [Configuration](./configuration.md) | Every option in `reader.config.ts`, defaults, validation |
+| [React](./react.md) | `ReaderProvider`, the components, the top bar, hooks, Vite, React Router, MDX |
+| [Next.js](./nextjs.md) | `withReader`, `ReaderRoot`, `ReaderChapter`, static params, deployment |
+| [Reader features](./reader-features.md) | Highlights, notes, bookmarks, progress, scratchpad, settings, backup, storage |
+| [Agent-readable content](./agent.md) | `.md` twins of every page, `/llms.txt`, `createAgentHandler()` in any server |
+| [Copy Reference](./copy-reference.md) | The "Copy reference" button, Open in ChatGPT / Claude / Grok, `<MarkdownAlternate>` |
+| [Formats: Markdown, MDX, HTML, PDF](./formats.md) | What each format does in the reader and in its `.md` twin |
+| [Styling](./styling.md) | `styles.css` vs `tailwind.css`, theme tokens, themes |
+
+## Reference
+
+| Page | Covers |
+| --- | --- |
+| [API reference](./api-reference.md) | Every entry point and its exports |
+| [Troubleshooting](./troubleshooting.md) | Common errors and how to fix them |
+
+## Entry points at a glance
+
+| Import | Runs in | What it is |
+| --- | --- | --- |
+| `zreader/react` | Browser (React 19) | `ReaderProvider`, `BookShelf`, `BookContents`, `Reader`, hooks |
+| `zreader/editor` | Browser | The Tiptap scratchpad editor (lazy-loaded by `zreader/react`) |
+| `zreader` | Anywhere | Core: storage store, anchoring, block ids, backup |
+| `zreader/rehype` | Build time | `rehypeBlocks` for your own MDX/Markdown pipeline |
+| `zreader/content` | Node | Content layer for `content/books/**` |
+| `zreader/config` | Node | `defineConfig`, `glob`, `z` for `reader.config.ts` |
+| `zreader/next` | Node (`next.config`) | `withReader()` |
+| `zreader/next/client` | Browser | `NextReaderProvider` (provider bound to `next/link`) |
+| `zreader/next/server` | Server components | `ReaderRoot`, `ReaderChapter`, `getBookParams`, `getChapterParams` |
+| `zreader/agent` | Node | `createAgentHandler()` and the Markdown converters |
+| `zreader/agent/react` | Browser | `CopyReference`, `MarkdownAlternate` and URL helpers |
+| `zreader/styles.css`, `zreader/tailwind.css`, `zreader/reader.css` | CSS | Stylesheets |
+
+Requirements: React 19 or later, Node 20.9 or later for the server entry points, and Next.js 15.5 or later for the Next.js adapter.

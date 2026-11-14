@@ -17,6 +17,7 @@
 
 @source "./react";
 @source "./editor";
+@source "./agent";
 
 @custom-variant dark (&:is(.dark *));
 

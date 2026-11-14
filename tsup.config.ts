@@ -35,6 +35,7 @@ export default defineConfig([
       "content/index": "src/content/index.ts",
       "next/server/index": "src/next/server/index.tsx",
       "rehype/index": "src/rehype/index.ts",
+      "agent/index": "src/agent/index.ts",
       "virtual-config/index": "src/virtual-config/index.ts",
       "user-config/index": "src/user-config/index.ts",
       "stubs/server-only": "src/stubs/server-only.ts",
@@ -59,6 +60,7 @@ export default defineConfig([
       "react/index": "src/react/index.ts",
       "editor/index": "src/editor/index.tsx",
       "next/client/index": "src/next/client/index.tsx",
+      "agent/react/index": "src/agent/react/index.ts",
     },
     // Unsplit so every client entry file can carry the directive (see scripts/use-client.mjs).
     splitting: false,

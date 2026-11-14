@@ -63,6 +63,7 @@ export interface Library {
   Link: LinkComponent;
   href: HrefFor;
   headerSlot?: HeaderSlot;
+  readerActions?: ReactNode;
 }
 
 interface ReaderContextValue {
@@ -103,6 +104,12 @@ export interface ReaderProviderProps {
    * or any component. Omit to show the book and chapter titles.
    */
   headerSlot?: HeaderSlot;
+  /**
+   * Default buttons for the right of the reader's top bar (before the bookmark
+   * toggle), e.g. `<CopyReference markdown />`. A <Reader>'s `actions` replaces
+   * them; `actions={null}` hides them for that chapter.
+   */
+  readerActions?: ReactNode;
   children: ReactNode;
 }
 
@@ -118,6 +125,7 @@ export function ReaderProvider({
   Link,
   hrefFor,
   headerSlot,
+  readerActions,
   children,
 }: ReaderProviderProps) {
   const key = JSON.stringify([options ?? null, overrides ?? null]);
@@ -141,8 +149,9 @@ export function ReaderProvider({
       Link: Link ?? DefaultLink,
       href: hrefFor ?? ((b, c, h) => defaultHref(resolved.basePath, b, c, h)),
       headerSlot,
+      readerActions,
     };
-  }, [books, Link, hrefFor, headerSlot, resolved.basePath]);
+  }, [books, Link, hrefFor, headerSlot, readerActions, resolved.basePath]);
   const value = useMemo(() => ({ store, options: resolved, library }), [store, resolved, library]);
 
   const tree = (

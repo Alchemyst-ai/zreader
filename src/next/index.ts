@@ -66,6 +66,11 @@ export function applyReaderConfig(base: NextConfig, setup: ReaderNextSetup, root
   const tracing = { ...(base.outputFileTracingIncludes ?? {}) };
   const allRoutes = "/**";
   tracing[allRoutes] = Array.from(new Set([...(tracing[allRoutes] ?? []), contentGlob]));
+  // The proxy/middleware entry is named "proxy" or "middleware" (no leading
+  // slash, so "/**" misses it); zreader/agent reads chapters from the proxy.
+  for (const entry of ["middleware", "proxy"]) {
+    tracing[entry] = Array.from(new Set([...(tracing[entry] ?? []), contentGlob]));
+  }
 
   const externals = Array.from(new Set([...(base.serverExternalPackages ?? []), ...SERVER_EXTERNALS]));
 

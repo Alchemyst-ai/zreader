@@ -55,7 +55,12 @@ describe("withReader / applyReaderConfig", () => {
     expect(out.reactStrictMode).toBe(true);
     expect(out.turbopack?.resolveAlias).toEqual({ underscore: "lodash", [USER_CONFIG_SPECIFIER]: "./reader.config.ts" });
     expect(out.serverExternalPackages).toEqual(expect.arrayContaining(["sharp", "jsdom", "isomorphic-dompurify"]));
-    expect(out.outputFileTracingIncludes).toEqual({ "/api/x": ["./data/**"], "/**": ["content/books/**/*"] });
+    expect(out.outputFileTracingIncludes).toEqual({
+      "/api/x": ["./data/**"],
+      "/**": ["content/books/**/*"],
+      middleware: ["content/books/**/*"],
+      proxy: ["content/books/**/*"],
+    });
 
     const wp = out.webpack!({ resolve: { alias: { keep: "me" } } } as never, {} as never) as { resolve: { alias: Record<string, string> } };
     expect(wp.resolve.alias).toEqual({ keep: "me", [`${USER_CONFIG_SPECIFIER}$`]: "/proj/reader.config.ts" });

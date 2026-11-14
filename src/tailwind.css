@@ -13,6 +13,7 @@
 
 @source "./react";
 @source "./editor";
+@source "./agent";
 
 /* Sepia reading theme in your token names. */
 .sepia {

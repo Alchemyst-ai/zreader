@@ -16,6 +16,7 @@ import config from "zreader/virtual-config";
 import { getBookMetas, getChapter, getStaticParams, renderChapter, type MdxComponents } from "zreader/content";
 import { Callout, Reader, type ReaderProps, type ReaderProviderProps } from "zreader/react";
 import { NextReaderProvider } from "zreader/next/client";
+import { CopyReference, MarkdownAlternate, type BuiltInProvider } from "zreader/agent/react";
 import type { BookMeta } from "zreader";
 
 /**
@@ -24,7 +25,20 @@ import type { BookMeta } from "zreader";
  */
 export const mdxComponents = { Callout };
 
-export interface ReaderRootProps extends Omit<ReaderProviderProps, "options" | "store" | "adapter" | "onStorageError" | "Link" | "books" | "headerSlot"> {
+/** Serializable options for `<ReaderRoot agent>` (see `<CopyReference>`). */
+export interface ReaderRootAgentOptions {
+  /** Copied text; `{url}` is the chapter's `.md` URL. */
+  prompt?: string;
+  /** Prompt sent to the assistants in the menu. */
+  askPrompt?: string;
+  /** Built-in assistants, in order. `[]` hides them. */
+  providers?: BuiltInProvider[];
+  /** Button text. */
+  label?: string;
+}
+
+export interface ReaderRootProps
+  extends Omit<ReaderProviderProps, "options" | "store" | "adapter" | "onStorageError" | "Link" | "books" | "headerSlot" | "readerActions"> {
   /** Defaults to every book from the content layer (`getBookMetas()`). */
   books?: BookMeta[];
   /**
@@ -32,6 +46,17 @@ export interface ReaderRootProps extends Omit<ReaderProviderProps, "options" | "
    * Server-rendered, so it must be a node, not a function.
    */
   headerSlot?: ReactNode;
+  /**
+   * Default buttons for the right of the reader's top bar. A chapter's
+   * `actions` replaces them. With `agent`, they render after the agent button.
+   */
+  readerActions?: ReactNode;
+  /**
+   * Agent features for every chapter: a `<link rel="alternate" type="text/markdown">`
+   * tag and a "Copy reference" button pointing at the chapter's `.md` twin.
+   * Serve those with `createAgentHandler()` from `zreader/agent` in proxy.ts.
+   */
+  agent?: boolean | ReaderRootAgentOptions;
   children: ReactNode;
 }
 
@@ -39,10 +64,20 @@ export interface ReaderRootProps extends Omit<ReaderProviderProps, "options" | "
  * The reader's provider for Next.js: client options from reader.config.ts, the
  * book catalogue from the content layer, and next/link for every link.
  */
-export async function ReaderRoot({ books, children, ...props }: ReaderRootProps) {
+export async function ReaderRoot({ books, agent, readerActions, children, ...props }: ReaderRootProps) {
   const catalogue = books ?? (await getBookMetas());
+  const agentOptions = agent === true ? {} : agent || null;
+  const actions = agentOptions ? (
+    <>
+      <MarkdownAlternate />
+      <CopyReference markdown {...agentOptions} />
+      {readerActions}
+    </>
+  ) : (
+    readerActions
+  );
   return (
-    <NextReaderProvider options={config.reader} books={catalogue} {...props}>
+    <NextReaderProvider options={config.reader} books={catalogue} readerActions={actions} {...props}>
       {children}
     </NextReaderProvider>
   );

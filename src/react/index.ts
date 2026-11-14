@@ -18,7 +18,7 @@ export {
   type HrefFor,
   type HeaderSlot,
 } from "./context";
-export { Reader, ReaderTitle, useReaderChapter, type ReaderProps } from "./Reader";
+export { Reader, ReaderTitle, useReaderChapter, type ReaderProps, type ReaderChapterValue } from "./Reader";
 export {
   ContinueReading,
   ChapterList,

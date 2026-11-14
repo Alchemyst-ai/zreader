@@ -12,6 +12,8 @@ export default defineConfig({
       { find: /^zreader\/next\/client$/, replacement: r("./src/next/client/index.tsx") },
       { find: /^zreader\/next\/server$/, replacement: r("./src/next/server/index.tsx") },
       { find: /^zreader\/rehype$/, replacement: r("./src/rehype/index.ts") },
+      { find: /^zreader\/agent\/react$/, replacement: r("./src/agent/react/index.ts") },
+      { find: /^zreader\/agent$/, replacement: r("./src/agent/index.ts") },
       { find: /^zreader\/content$/, replacement: r("./src/content/index.ts") },
       { find: /^zreader\/virtual-config$/, replacement: r("./src/virtual-config/index.ts") },
       { find: /^zreader\/user-config$/, replacement: r("./src/stubs/empty-config.ts") },
