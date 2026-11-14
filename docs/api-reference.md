@@ -1,6 +1,6 @@
 # API reference
 
-Every entry point and what it exports. Types are listed after values. For behaviour, follow the links to the guides.
+Every entry point and what it exports. Types are listed after values. For behaviour, follow the links to the guides; for how the entry points depend on each other, see [Architecture](./architecture.md).
 
 ## `zreader/react`
 
@@ -50,12 +50,46 @@ Browser. See [Copy Reference](./copy-reference.md).
 
 Node. See [Agent-readable content](./agent.md).
 
-- `createAgentHandler(options?)`: `(request: Request) => Promise<Response | undefined>`
-- `matchAgentRoute(pathname, basePath, llms?)`, `requestOrigin(request)`
-- `chapterToMarkdown(lookup, ctx)`, `bookToMarkdown(book, ctx)`, `shelfToMarkdown(books, ctx)`, `llmsTxt(books, ctx, opts?)`
+**Handler**
+
+- `createAgentHandler(options?)`: `(request: Request) => Promise<Response | undefined>` — serves every shelf by default
+- `matchAgentRoute(pathname, basePath)`: `AgentRouteMatch | null` (`{ kind: "shelf" }`, `"book"` or `"chapter"`)
+- `requestOrigin(request)`
+- Types: `AgentHandler`, `AgentHandlerOptions` (`shelves`, `origin`, `cacheControl`, `devWarnings`, `sources`), `AgentContentSource`, `AgentRouteMatch`
+
+**Converters and helpers**
+
+- `chapterToMarkdown(lookup, ctx)`, `bookToMarkdown(book, ctx)`, `shelfToMarkdown(books, ctx, { title?, description? })`
+- `llmsTxt(books, ctx, { title?, description? })`, `fullTextToMarkdown(books, ctx, opts?)`
+- `notFoundToMarkdown(info, ctx, opts?)`, `renderFrontmatter(fields)`, `isValidFrontmatterKey(key)`
+- `demoteHeadings(markdown, by)`
+- `resolveLastUpdated(entry, override?)`, `newestLastUpdated(entries, override?)`, `newestBookLastUpdated(books, override?)`
 - `chapterBodyToMarkdown(entry)`, `mdxToMarkdown(source)`, `htmlToMarkdown(html)`
 - `pageUrl(ctx, book?, chapter?)`, `markdownPageUrl(ctx, book?, chapter?)`
-- Types: `AgentHandler`, `AgentHandlerOptions` (`basePath`, `api`, `origin`, `llms`, `cacheControl`), `AgentContentSource`, `AgentUrlContext` (`{ origin, basePath }`), `LlmsTxtOptions` (`{ title?, description? }`)
+- Types: `AgentUrlContext` (`{ origin, basePath }`), `LlmsTxtOptions`, `ShelfOptions`, `LastUpdatedInput`, `NotFoundMarkdownOptions`
+- Plugin types (re-exported): `AgentPlugin`, `AgentPluginRoute`, `AgentPluginContext`, `AgentPluginMethod`, `AgentDocument`, `DocumentMeta`, `NotFoundInfo`
+
+Browser bundles resolve this entry to a stub that throws.
+
+## `zreader/plugins/agent`
+
+Node. Opt-in plugins for `zreader/agent`, declared in `reader.config.ts`. See [Agent plugins](./plugins.md).
+
+**Factories**
+
+- `frontmatter(opts?)` (`FrontmatterOptions`: `title`, `lastUpdated`, `extra`)
+- `llmsTxt(opts?)` (`LlmsTxtPluginOptions`: `full`, `root`, `title`, `description`)
+- `notFound(opts?)` (`NotFoundOptions`: `title`, `maxBooks`, `maxChapters`, `render`)
+- `cors(opts?)` (`CorsOptions`: `origin`, `vary`, `maxAge`)
+- `mcp(opts?)` (`McpOptions`: `path`, `name`, `search`, `tools`; `SearchHit`)
+- `disable(name)`
+
+**Authoring types**
+
+- `AgentPlugin` (`name`, `routes`, `rootRoutes`, `document`, `headers`, `setup`)
+- `AgentPluginRoute` (`path`, `methods`, `handle`), `AgentPluginMethod`
+- `AgentPluginContext` (`shelf`, `api`, `url`, `request`, `methods`, `respond`, `document`)
+- `AgentDocument` (`kind`, `body`, `meta`, `preamble`, `status`, `book`, `chapter`, `notFound`), `DocumentMeta`, `NotFoundInfo`
 
 Browser bundles resolve this entry to a stub that throws.
 
@@ -64,11 +98,13 @@ Browser bundles resolve this entry to a stub that throws.
 Node. See [Content layer](./content.md).
 
 - `getBooks()`, `getBookMetas()`, `getBook(id)`, `getChapter(bookId, chapterId)`, `renderChapter(entry)`, `getStaticParams(names?)`, `getReaderConfig()`
-- `defineBooks(contentOptions | resolvedConfig)`: a separate API with the same methods
+- `getShelf(id?)`: one shelf's API (`getBooks`, `getBook`, `getBookMetas`, `getChapter`, `renderChapter`, `getStaticParams`, `shelf()`); the default shelf when omitted
+- `getShelves()`: every resolved `ResolvedShelf`
+- `defineBooks(contentOptions | resolvedConfig)`: a separate API with the same methods, for content that isn't a shelf
 - `toBookMeta(bookEntry)`, `loadBooks(config)`, `compileChapter(entry, config)`, `ContentError`
 - `renderMarkdown(md, opts?)`, `renderHtml(html, opts?)`, `annotateHtml(html)`, `compileMdx(source, opts?)`, `runMdx(code)`, `sanitizeHtml(html, sanitize?)`
 - `rehypeBlocks`, `hashString`, `glob`, `defineConfig`, `z`
-- Types: `BookEntry`, `ChapterEntry`, `ChapterLookup`, `RenderedChapter`, `HtmlResult`, `MdxCompiled`, `MdxContent`, `MdxComponents`, `ChapterFormat`, `PipelineOptions`, `BlockInfo`, `BlocksData`, `ReaderUserConfig`, `ResolvedReaderConfig`, `SanitizeOptions`, `ContentConfig`, `GlobLoader`
+- Types: `BookEntry`, `ChapterEntry`, `ChapterLookup`, `RenderedChapter`, `ShelfApi`, `HtmlResult`, `MdxCompiled`, `MdxContent`, `MdxComponents`, `ChapterFormat`, `PipelineOptions`, `BlockInfo`, `BlocksData`, `ReaderUserConfig`, `ResolvedReaderConfig`, `ResolvedShelf`, `BookshelfConfig`, `SanitizeOptions`, `ContentConfig`, `GlobLoader`
 
 Browser bundles resolve this entry to a stub that throws.
 
@@ -77,10 +113,12 @@ Browser bundles resolve this entry to a stub that throws.
 Node (ESM and CJS). See [Configuration](./configuration.md).
 
 - `defineConfig(config)`, `glob({ base, pattern?, ignore? })`, `z` (zod v4)
-- `resolveConfig(user?, inline?, { root?, source? })`, `mergeConfig(base, ...overrides)`, `clientOptions(resolved)`
+- `resolveConfig(user?, inline?, { root?, source? })`, `mergeConfig(base, ...overrides)`, `clientOptions(resolved, shelfId?)`
+- `shelfById(config, id?)`, `defaultShelfOf(config)`, `mergePlugins(top, own)`, `applyDisables(plugins)`
+- `normalizeBasePath(basePath)`, `pathContains(outer, inner)`
 - `defaultContentConfig()`, `defaultBookSchema`, `defaultChapterSchema`
 - `ReaderConfigError` (with `issues: { path, message }[]`), `CONFIG_FILE_NAMES`
-- Types: `ReaderUserConfig`, `ResolvedReaderConfig`, `ContentConfig`, `GlobLoader`, `SanitizeOptions`, `PluginList`
+- Types: `ReaderUserConfig` (`content`, `reader`, `agent`, `bookshelves`), `BookshelfConfig`, `ResolvedReaderConfig` (`root`, `content`, `reader`, `shelves`, `defaultShelf`), `ResolvedShelf`, `ContentConfig`, `GlobLoader`, `SanitizeOptions`, `PluginList`, `DeepPartial`
 
 ## `zreader/next`
 
@@ -95,10 +133,10 @@ Node (ESM and CJS), for `next.config.*`. See [Next.js](./nextjs.md).
 
 React Server Components.
 
-- `ReaderRoot` (`ReaderRootProps`, `ReaderRootAgentOptions`)
-- `ReaderChapter` (`ReaderChapterProps`)
-- `getBookParams()`, `getChapterParams()`
-- `mdxComponents`, `readerConfig`, `getClientOptions()`
+- `ReaderRoot` (`ReaderRootProps` with `shelf`, `devWarnings`; `ReaderRootAgentOptions`)
+- `ReaderChapter` (`ReaderChapterProps` with `shelf`)
+- `getBookParams(shelf?)`, `getChapterParams(shelf?)`
+- `agentMatcher(shelf)`, `mdxComponents`, `readerConfig`, `getClientOptions(shelf?)`
 
 ## `zreader/next/client`
 

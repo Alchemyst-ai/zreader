@@ -4,12 +4,25 @@
  *   const books = await getBooks();
  *   const { chapter } = await getChapter("my-book", "intro");
  *   const rendered = await renderChapter(chapter);
+ *
+ * With more than one bookshelf, scope the calls to one:
+ *
+ *   const books = await getShelf("reports").getBooks();
  */
-import { mergeConfig, type ContentConfig, type ReaderUserConfig, type ResolvedReaderConfig } from "../config/index";
+import {
+  defaultShelfOf,
+  mergeConfig,
+  shelfById,
+  type ContentConfig,
+  type ReaderUserConfig,
+  type ResolvedReaderConfig,
+  type ResolvedShelf,
+} from "../config/index";
 import type { BookMeta, ChapterMeta, TocEntry } from "../core/types";
 import { compileChapter, loadBooks, type BookEntry, type ChapterEntry } from "./loader";
 import { runMdx, type MdxContent } from "./pipeline";
 import type { BlockInfo } from "../rehype/index";
+import type { AgentContentSource } from "../agent/handler";
 
 export type RenderedChapter =
   | { kind: "html"; html: string; toc: TocEntry[]; blocks: BlockInfo[]; contentHash: string }
@@ -23,30 +36,54 @@ export interface ChapterLookup {
   next: ChapterMeta | null;
 }
 
+/** A shelf plus the project root the content paths resolve against. */
+interface ShelfHandle {
+  root: string;
+  shelf: ResolvedShelf;
+}
+
+/** The content API for one shelf. */
+export interface ShelfApi extends AgentContentSource {
+  /** The resolved shelf this API reads. */
+  shelf(): Promise<ResolvedShelf>;
+  /** Plain, serializable book metadata (safe to pass to client components). */
+  getBookMetas(): Promise<BookMeta[]>;
+  renderChapter(entry: ChapterEntry): Promise<RenderedChapter>;
+  /** For `generateStaticParams`. Param names are configurable. */
+  getStaticParams<B extends string = "book", C extends string = "chapter">(
+    names?: { book?: B; chapter?: C },
+  ): Promise<Array<Record<B | C, string>>>;
+}
+
 async function globalConfig(): Promise<ResolvedReaderConfig> {
   const mod = await import("zreader/virtual-config");
   return mod.default;
 }
 
-const bookCache = new WeakMap<ResolvedReaderConfig, Promise<BookEntry[]>>();
+function configOf(handle: ShelfHandle): ResolvedReaderConfig {
+  return { root: handle.root, content: handle.shelf.content, reader: handle.shelf.reader, shelves: [handle.shelf], defaultShelf: handle.shelf.id };
+}
 
-function cachedBooks(config: ResolvedReaderConfig): Promise<BookEntry[]> {
-  if (process.env.NODE_ENV === "development") return loadBooks(config); // always fresh in dev
-  let p = bookCache.get(config);
+/** Book caches are per shelf, so two shelves never share a catalogue. */
+const bookCache = new WeakMap<ResolvedShelf, Promise<BookEntry[]>>();
+
+function cachedBooks(handle: ShelfHandle): Promise<BookEntry[]> {
+  if (process.env.NODE_ENV === "development") return loadBooks(configOf(handle)); // always fresh in dev
+  let p = bookCache.get(handle.shelf);
   if (!p) {
-    p = loadBooks(config);
-    bookCache.set(config, p);
-    p.catch(() => bookCache.delete(config));
+    p = loadBooks(configOf(handle));
+    bookCache.set(handle.shelf, p);
+    p.catch(() => bookCache.delete(handle.shelf));
   }
   return p;
 }
 
-function createApi(getConfig: () => Promise<ResolvedReaderConfig>) {
-  const api = {
-    config: getConfig,
+function createApi(getHandle: () => Promise<ShelfHandle>) {
+  const api: ShelfApi = {
+    shelf: async () => (await getHandle()).shelf,
 
     async getBooks(): Promise<BookEntry[]> {
-      return cachedBooks(await getConfig());
+      return cachedBooks(await getHandle());
     },
 
     /** Plain, serializable book metadata (safe to pass to client components). */
@@ -73,7 +110,7 @@ function createApi(getConfig: () => Promise<ResolvedReaderConfig>) {
     },
 
     async renderChapter(entry: ChapterEntry): Promise<RenderedChapter> {
-      const compiled = await compileChapter(entry, await getConfig());
+      const compiled = await compileChapter(entry, configOf(await getHandle()));
       if (compiled.kind === "mdx") {
         const { code, ...rest } = compiled;
         return { ...rest, kind: "mdx", Content: await runMdx(code) };
@@ -109,7 +146,38 @@ export function toBookMeta(book: BookEntry): BookMeta {
   };
 }
 
-const defaultApi = createApi(globalConfig);
+const shelfApis = new Map<string, ShelfApi>();
+
+/**
+ * The content API for one bookshelf. The default shelf when `id` is omitted.
+ *
+ *   await getShelf("reports").getBooks();
+ */
+export function getShelf(id?: string): ShelfApi {
+  const key = id ?? "";
+  let api = shelfApis.get(key);
+  if (!api) {
+    api = createApi(async () => {
+      const config = await globalConfig();
+      const shelf = shelfById(config, id);
+      if (!shelf) {
+        throw new Error(
+          `zreader: no bookshelf with id "${id}". Known: ${config.shelves.map((s) => s.id).join(", ") || "(none)"}.`,
+        );
+      }
+      return { root: config.root, shelf };
+    });
+    shelfApis.set(key, api);
+  }
+  return api;
+}
+
+/** Every resolved bookshelf, in declaration order. */
+export async function getShelves(): Promise<ResolvedShelf[]> {
+  return (await globalConfig()).shelves;
+}
+
+const defaultApi = getShelf();
 
 export const getBooks = defaultApi.getBooks;
 export const getBookMetas = defaultApi.getBookMetas;
@@ -126,19 +194,24 @@ type InlineContent = ReaderUserConfig["content"];
  *
  *   export const handbook = defineBooks({ loader: glob({ base: "./content/handbook" }) });
  *   await handbook.getBooks();
+ *
+ * An escape hatch for content that is not a shelf (a script, a one-off loader).
+ * It has no plugins and is not traced by `withReader`; for anything served over
+ * HTTP, declare a bookshelf in reader.config.ts instead.
  */
 export function defineBooks(inline: InlineContent | ResolvedReaderConfig = {}) {
   if (inline && "root" in inline && "reader" in inline) {
     const resolved = inline as ResolvedReaderConfig;
-    return createApi(async () => resolved);
+    const shelf = defaultShelfOf(resolved);
+    return createApi(async () => ({ root: resolved.root, shelf }));
   }
-  let memo: Promise<ResolvedReaderConfig> | undefined;
+  let memo: Promise<ShelfHandle> | undefined;
   return createApi(
     () =>
-      (memo ??= globalConfig().then((g) => ({
-        ...g,
-        content: mergeConfig<ContentConfig>(g.content, inline),
-      }))),
+      (memo ??= globalConfig().then((g) => {
+        const content = mergeConfig<ContentConfig>(g.content, inline);
+        return { root: g.root, shelf: { ...defaultShelfOf(g), content, plugins: [] } };
+      })),
   );
 }
 
@@ -160,4 +233,12 @@ export { sanitizeHtml } from "./sanitize";
 export { rehypeBlocks, type BlockInfo, type BlocksData } from "../rehype/index";
 export { hashString } from "../core/blocks";
 export { glob, defineConfig, z } from "../config/index";
-export type { ReaderUserConfig, ResolvedReaderConfig, SanitizeOptions, ContentConfig, GlobLoader } from "../config/index";
+export type {
+  ReaderUserConfig,
+  ResolvedReaderConfig,
+  ResolvedShelf,
+  BookshelfConfig,
+  SanitizeOptions,
+  ContentConfig,
+  GlobLoader,
+} from "../config/index";

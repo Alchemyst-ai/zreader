@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { compileMdx, defineBooks, renderHtml, renderMarkdown, runMdx, sanitizeHtml } from "../src/content/index";
-import { resolveConfig } from "../src/config/index";
+import { glob, resolveConfig } from "../src/config/index";
 
 describe("sanitizeHtml", () => {
   const vectors = [
@@ -123,5 +123,56 @@ describe("content loader", () => {
     writeFileSync(join(root, "content/books/field-guide/04-bad.md"), "---\norder: 4\n---\nno title");
     const api = defineBooks(resolveConfig({ content: { cacheDir: join(root, ".cache") } }, null, { root }));
     await expect(api.getBooks()).rejects.toThrow(/Invalid chapter frontmatter[\s\S]*title[\s\S]*04-bad\.md/);
+  });
+});
+
+describe("bookshelves", () => {
+  function twoShelves() {
+    const root = mkdtempSync(join(tmpdir(), "zr-shelves-"));
+    for (const [shelf, book, chapter] of [
+      ["books", "field-guide", "First"],
+      ["reports", "q3-2026", "Revenue"],
+    ] as const) {
+      const dir = join(root, "content", shelf, book);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "book.json"), JSON.stringify({ title: book }));
+      writeFileSync(join(dir, "01-first.md"), `---\ntitle: ${chapter}\n---\n\nBody.`);
+    }
+    return root;
+  }
+
+  const shelfApi = (root: string, id: string) =>
+    defineBooks(resolveConfig({ content: { loader: glob({ base: `./content/${id}` }), cacheDir: join(root, ".cache") } }, null, { root }));
+
+  it("scopes books, chapters and static params to one shelf", async () => {
+    const root = twoShelves();
+    const books = await shelfApi(root, "books").getBooks();
+    const reports = await shelfApi(root, "reports").getBooks();
+    expect(books.map((b) => b.id)).toEqual(["field-guide"]);
+    expect(reports.map((b) => b.id)).toEqual(["q3-2026"]);
+    expect((await shelfApi(root, "reports").getChapter("q3-2026", "first"))!.chapter.title).toBe("Revenue");
+    expect(await shelfApi(root, "books").getStaticParams()).toEqual([{ book: "field-guide", chapter: "first" }]);
+  });
+
+  it("resolves the same shelf through the config", async () => {
+    const root = twoShelves();
+    const config = resolveConfig(
+      {
+        bookshelves: [
+          { id: "books", basePath: "/books", content: { loader: glob({ base: "./content/books" }) } },
+          { id: "reports", basePath: "/reports", title: "Quarterly reports", content: { loader: glob({ base: "./content/reports" }) } },
+        ],
+      },
+      null,
+      { root },
+    );
+    expect(config.shelves.map((s) => s.id)).toEqual(["books", "reports"]);
+    expect(config.shelves[1]!.title).toBe("Quarterly reports");
+    expect(config.defaultShelf).toBe("books");
+  });
+
+  it("keeps defineBooks as an escape hatch with no plugins", () => {
+    const api = defineBooks({ loader: glob({ base: "./content/one-off" }) });
+    expect(typeof api.getBooks).toBe("function");
   });
 });

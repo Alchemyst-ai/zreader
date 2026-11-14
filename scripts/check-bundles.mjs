@@ -24,3 +24,21 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(`check-bundles: ${seen.size} files clean (no next/* or Node built-ins)`);
+
+// The plugin factories are read by next.config, so their entry chunk must stay
+// light: no unified, no content layer, no virtual config (§4.3).
+const HEAVY = /from\s*['"](unified|zreader\/content|zreader\/virtual-config)['"]/g;
+const pluginEntry = join(dist, "plugins/agent/index.js");
+if (!existsSync(pluginEntry)) {
+  console.error("check-bundles: dist/plugins/agent/index.js is missing");
+  process.exit(1);
+}
+const heavy = [...readFileSync(pluginEntry, "utf8").matchAll(HEAVY)].map((m) => m[1]);
+if (heavy.length) {
+  console.error(
+    "zreader/plugins/agent must not pull heavy dependencies into its entry chunk:\n  " +
+      [...new Set(heavy)].join("\n  "),
+  );
+  process.exit(1);
+}
+console.log("check-bundles: zreader/plugins/agent entry chunk is light");

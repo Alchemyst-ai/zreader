@@ -1,6 +1,6 @@
 {
   "name": "zreader",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A localStorage-first, mobile-first book reader: chapters, bookmarks, sentence highlights, notes, reading progress and a WYSIWYG markdown scratchpad.",
   "license": "MIT",
   "author": "Alchemyst AI",
@@ -111,6 +111,11 @@
     "./agent/react": {
       "types": "./dist/agent/react/index.d.ts",
       "default": "./dist/agent/react/index.js"
+    },
+    "./plugins/agent": {
+      "types": "./dist/plugins/agent/index.d.ts",
+      "browser": "./dist/stubs/server-only.js",
+      "default": "./dist/plugins/agent/index.js"
     },
     "./styles.css": "./dist/styles.css",
     "./tailwind.css": "./dist/tailwind.css",

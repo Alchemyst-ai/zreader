@@ -74,6 +74,9 @@ interface ReaderContextValue {
 
 const ReaderContext = createContext<ReaderContextValue | null>(null);
 
+/** Fires at most once per process (§10.3). */
+let warnedMount = false;
+
 export interface ReaderProviderProps {
   /** Usually `config.reader` from reader.config.ts (see <ReaderRoot>). */
   options?: DeepPartial<ReaderClientOptions>;
@@ -153,6 +156,24 @@ export function ReaderProvider({
     };
   }, [books, Link, hrefFor, headerSlot, readerActions, resolved.basePath]);
   const value = useMemo(() => ({ store, options: resolved, library }), [store, resolved, library]);
+
+  // §10.3: outside its basePath every `hrefFor` link is wrong (a renamed
+  // basePath without a renamed app/ folder). Development only, once per process.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" || typeof window === "undefined") return;
+    if (warnedMount) return;
+    warnedMount = true;
+    const path = window.location.pathname;
+    const base = resolved.basePath.replace(/\/+$/, "");
+    if (base && path !== base && !path.startsWith(`${base}/`)) {
+      const mount = `/${path.split("/").filter(Boolean)[0] ?? ""}`;
+      const target = base || "/";
+      console.warn(
+        `[zreader] This reader's basePath is "${resolved.basePath}", but it is mounted at ${path}.\n` +
+          `          Rename app${mount}/ to app${target}/, or set basePath back to "${mount}".`,
+      );
+    }
+  }, [resolved.basePath]);
 
   const tree = (
     <ReaderContext.Provider value={value}>

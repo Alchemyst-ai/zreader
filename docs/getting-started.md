@@ -103,7 +103,7 @@ Open `/books`. Every page is statically generated.
 
 ### 3. Optional: make it agent-readable
 
-Add a proxy and one flag, and every chapter gets a Markdown twin, an `/llms.txt` index, a `<link rel="alternate" type="text/markdown">` tag and a **Copy reference** button.
+Add a proxy and one flag, and every chapter gets a Markdown twin, a `<link rel="alternate" type="text/markdown">` tag and a **Copy reference** button. Add the `llmsTxt()` plugin for an [llms.txt](https://llmstxt.org) index.
 
 ```ts
 // proxy.ts (Next 16). On Next 15.5: middleware.ts, export `middleware`, add runtime: "nodejs" to config.
@@ -115,7 +115,15 @@ const agent = createAgentHandler({ origin: "https://press.example.com" });
 export async function proxy(req: Request) {
   return (await agent(req)) ?? NextResponse.next();
 }
-export const config = { matcher: ["/books/:path*.md", "/books.md", "/llms.txt"] };
+export const config = { matcher: ["/books/:path*.md", "/books.md", "/books/llms.txt"] };
+```
+
+```ts
+// reader.config.ts
+import { defineConfig } from "zreader/config";
+import { llmsTxt } from "zreader/plugins/agent";
+
+export default defineConfig({ agent: { plugins: [llmsTxt({ full: true, root: true })] } });
 ```
 
 ```tsx
@@ -126,6 +134,7 @@ export const config = { matcher: ["/books/:path*.md", "/books.md", "/llms.txt"] 
 Now:
 
 - `/books/context-infra/appendix-a-api-endpoint-reference.md` returns the chapter as Markdown.
+- `/llms.txt` lists every chapter (with `llmsTxt({ root: true })`); `/books/llms.txt` always does.
 - **Copy reference** copies `Refer the content at https://press.example.com/books/context-infra/appendix-a-api-endpoint-reference.md`.
 
 See [Agent-readable content](./agent.md) and [Copy Reference](./copy-reference.md).

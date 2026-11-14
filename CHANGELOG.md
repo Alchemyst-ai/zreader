@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.0
+
+**Bookshelves.** `defineConfig({ bookshelves: [...] })` declares one or more shelves, each with its own content folder, `basePath` and agent plugins. Every zreader surface — the agent handler, `ReaderRoot`, `ReaderChapter`, the static params helpers and `withReader` tracing — reads shelves from the same config. Shelves are never nested: one route each.
+
+**Agent plugins.** New `zreader/plugins/agent`, scoped to the shelf that declares them:
+
+- `frontmatter()` — YAML frontmatter (`title`, `description`, `canonical`, `last_updated`, …) on every document.
+- `llmsTxt({ full, root })` — `{basePath}/llms.txt`, `{basePath}/llms-full.txt`, and the site root with `root: true`. One shelf's books only.
+- `notFound()` — a 404 document that lists the valid book and chapter ids.
+- `cors()` — CORS headers and `OPTIONS` preflights.
+- `mcp()` — a stateless MCP server at `POST {basePath}/mcp` with `list_books`, `get_book`, `get_chapter` and `search`.
+- `disable(name)` — drop a plugin inherited from the top level.
+
+Plus:
+
+- `getShelf(id?)` and `getShelves()` in `zreader/content`; book caches are per shelf.
+- `ReaderRoot shelf`, `ReaderChapter shelf`, `getBookParams(shelf?)`, `getChapterParams(shelf?)` and `agentMatcher(shelf)`.
+- `withReader` traces every shelf's content folder.
+- Development warnings when a shelf's routes aren't reaching zreader (a stale proxy matcher or a renamed `app/` folder).
+- New converters in `zreader/agent`: `fullTextToMarkdown`, `notFoundToMarkdown`, `renderFrontmatter`, `demoteHeadings`, `resolveLastUpdated`, `newestLastUpdated`, `newestBookLastUpdated`.
+
+### Migrating to 0.3
+
+| Change | Migration |
+| --- | --- |
+| `/llms.txt` is no longer served by default | Add `llmsTxt({ root: true })` to `agent.plugins` |
+| The `llms` option of `createAgentHandler` is removed | Use the `llmsTxt()` plugin's options |
+| `createAgentHandler({ api, basePath })` is removed | Declare a bookshelf; for non-file content use `sources` |
+| `createAgentHandler()` serves every shelf, not just the default content | No change for single-shelf apps |
+| `matchAgentRoute(pathname, basePath, llms)` loses `llms`; `{ kind: "llms" }` is gone | Drop the third argument |
+| `reader.basePath` at the top level is an error when `bookshelves` is set | Move it to each shelf |
+| `ResolvedReaderConfig` gains `shelves` and `defaultShelf` | Only affects code that constructs one by hand (`defineBooks(resolved)`) — add the fields, or use `resolveConfig()` |
+| `package.json` `exports` gains `./plugins/agent` | None |
+
+Unchanged for an app with one shelf and no plugins: the `.md` twin bodies are byte-identical to 0.2, storage keys are unchanged, and `ReaderRoot`, `ReaderChapter`, `getBooks()` and friends behave as before.
+
 ## 0.2.0
 
 - New `zreader/agent`: `createAgentHandler()` serves agent-readable Markdown twins of every page (`/books/<book>/<chapter>.md`, `/books/<book>.md`, `/books.md`) and `/llms.txt`. MDX is cleaned up and HTML is converted to Markdown.

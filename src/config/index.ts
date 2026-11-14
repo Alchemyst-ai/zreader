@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { z } from "zod/v4";
 import { DEFAULT_CLIENT_OPTIONS } from "../core/defaults";
 import {
@@ -9,6 +11,7 @@ import {
   THEMES,
   type ReaderClientOptions,
 } from "../core/types";
+import type { AgentPlugin } from "../plugins/agent/types";
 
 export { z };
 
@@ -53,7 +56,28 @@ export interface ContentConfig {
   cacheDir: string;
 }
 
-type DeepPartial<T> = T extends unknown[] ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+export type DeepPartial<T> = T extends unknown[] ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+
+/**
+ * One route and everything under it: a content folder, a `basePath` and the
+ * agent plugins that serve it. Shelves are never nested (see the docs).
+ */
+export interface BookshelfConfig {
+  /** Stable id, used by `ReaderRoot shelf="…"`, `getShelf("…")` and storage keys. */
+  id: string;
+  /** Where the shelf is mounted. Must start with "/"; "/" is allowed. */
+  basePath: string;
+  /** Shelf title (shelf `.md` H1, `llms.txt` H1, frontmatter). Defaults to "Books". */
+  title?: string;
+  /** Shelf summary (shelf `.md`, `llms.txt`, frontmatter). */
+  description?: string;
+  /** Merged over the top-level `content`. */
+  content?: ReaderUserConfig["content"];
+  /** Merged over the top-level `reader` (client options), minus `basePath`. */
+  reader?: Omit<DeepPartial<ReaderClientOptions>, "basePath">;
+  /** Plugins for this shelf; merged with the top-level `agent.plugins`. */
+  agent?: { plugins?: AgentPlugin[] };
+}
 
 export interface ReaderUserConfig {
   content?: DeepPartial<Omit<ContentConfig, "schemas" | "loader">> & {
@@ -61,15 +85,40 @@ export interface ReaderUserConfig {
     schemas?: Partial<ContentConfig["schemas"]>;
   };
   reader?: DeepPartial<ReaderClientOptions>;
+  /** Agent plugins shared by every shelf. Server-only; never sent to the client. */
+  agent?: { plugins?: AgentPlugin[] };
+  /** One entry per route. Omit for a single, implicit shelf. */
+  bookshelves?: BookshelfConfig[];
+}
+
+/** A fully resolved bookshelf: what every zreader surface reads. */
+export interface ResolvedShelf {
+  id: string;
+  basePath: string;
+  title: string;
+  description?: string;
+  content: ContentConfig;
+  /** The shelf's `reader`, with `basePath` and `storagePrefix` filled in. */
+  reader: ReaderClientOptions;
+  plugins: AgentPlugin[];
 }
 
 export interface ResolvedReaderConfig {
   root: string;
+  /** The default shelf's content config. */
   content: ContentConfig;
+  /** The default shelf's client options. */
   reader: ReaderClientOptions;
+  /** Never empty. The first entry is the default shelf. */
+  shelves: ResolvedShelf[];
+  /** Id of the first shelf. */
+  defaultShelf: string;
 }
 
 // ------------------------------------------------------------- defaults
+
+export const DEFAULT_SHELF_ID = "books";
+export const DEFAULT_SHELF_TITLE = "Books";
 
 export const defaultBookSchema = z.looseObject({
   title: z.string(),
@@ -139,6 +188,35 @@ function mergeTwo(a: unknown, b: unknown): unknown {
     return out;
   }
   return b;
+}
+
+// --------------------------------------------------------------- plugins
+
+function isPluginLike(v: unknown): v is AgentPlugin {
+  return typeof v === "object" && v !== null && typeof (v as { name?: unknown }).name === "string";
+}
+
+/**
+ * Top-level plugins first, then the shelf's. A shelf plugin with the same `name`
+ * replaces the inherited one *in place*, keeping its run order.
+ */
+export function mergePlugins(top: AgentPlugin[] = [], own: AgentPlugin[] = []): AgentPlugin[] {
+  const out = top.slice();
+  for (const p of own) {
+    const at = out.findIndex((x) => x.name === p.name);
+    // Replace an inherited plugin in place, keeping its position (and run order).
+    // Duplicates *within* `own` are kept, so §2.3 can report them.
+    if (at >= 0 && at < top.length) out[at] = p;
+    else out.push(p);
+  }
+  return applyDisables(out);
+}
+
+/** `disable("name")` drops an inherited plugin; the marker itself never runs. */
+export function applyDisables(plugins: AgentPlugin[]): AgentPlugin[] {
+  const dropped = new Set(plugins.map((p) => p.disable).filter((n): n is string => typeof n === "string"));
+  if (!dropped.size) return plugins;
+  return plugins.filter((p) => !p.disable && !dropped.has(p.name));
 }
 
 // --------------------------------------------------------------- validate
@@ -212,13 +290,126 @@ export class ReaderConfigError extends Error {
   }
 }
 
-function formatIssues(source: string, section: string, error: z.ZodError) {
-  const issues = error.issues.map((i) => ({ path: [section, ...i.path.map(String)].join("."), message: i.message }));
-  return new ReaderConfigError(
-    `Invalid reader config${source ? ` (${source})` : ""}:\n` + issues.map((i) => `  - ${i.path}: ${i.message}`).join("\n"),
-    issues,
-  );
+function collect(error: z.ZodError, section: string, issues: { path: string; message: string }[]) {
+  for (const i of error.issues) issues.push({ path: [section, ...i.path.map(String)].join("."), message: i.message });
 }
+
+// ---------------------------------------------------------------- shelves
+
+/** Trailing slashes trimmed, `//` collapsed. `""` becomes `"/"`. */
+export function normalizeBasePath(basePath: string): string {
+  const n = basePath.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+  return n || "/";
+}
+
+/** True when `inner` is `outer` or lives under it. `"/"` contains everything. */
+export function pathContains(outer: string, inner: string): boolean {
+  if (outer === inner) return true;
+  if (outer === "/") return true;
+  return inner.startsWith(`${outer}/`);
+}
+
+function resolveShelf(
+  s: BookshelfConfig,
+  topReader: ReaderClientOptions,
+  topContent: ContentConfig,
+  topPlugins: AgentPlugin[],
+  isDefault: boolean,
+): ResolvedShelf {
+  const content = mergeConfig<ContentConfig>(topContent, s.content);
+  const merged = mergeConfig<ReaderClientOptions>(topReader, s.reader);
+  const explicitPrefix = s.reader?.storagePrefix != null;
+  const reader: ReaderClientOptions = {
+    ...merged,
+    basePath: s.basePath,
+    // The default shelf keeps the shared prefix so existing readers keep their data.
+    storagePrefix: isDefault || explicitPrefix ? merged.storagePrefix : `${topReader.storagePrefix}-${s.id}`,
+  };
+  return {
+    id: s.id,
+    basePath: s.basePath,
+    title: s.title ?? DEFAULT_SHELF_TITLE,
+    description: s.description,
+    content,
+    reader,
+    plugins: mergePlugins(topPlugins, s.agent?.plugins),
+  };
+}
+
+function validateShelves(shelves: ResolvedShelf[], issues: { path: string; message: string }[]) {
+  const fail = (path: string, message: string) => {
+    if (!issues.some((i) => i.path === path && i.message === message)) issues.push({ path, message });
+  };
+  const byId = new Map<string, number>();
+  const byPath = new Map<string, number>();
+  const rootClaims = new Map<string, string>();
+
+  shelves.forEach((s, i) => {
+    const at = `bookshelves[${i}]`;
+    if (!/^[a-z0-9][a-z0-9_-]*$/i.test(s.id)) fail(`${at}.id`, "use letters, digits, '-' or '_'");
+    if (byId.has(s.id)) fail(`${at}.id`, `duplicate id "${s.id}"`);
+    else byId.set(s.id, i);
+
+    if (!s.basePath.startsWith("/")) fail(`${at}.basePath`, 'must start with "/"');
+    const norm = normalizeBasePath(s.basePath);
+    const owner = byPath.get(norm);
+    if (owner != null) fail(`${at}.basePath`, `"${norm}" is already used by "${shelves[owner]!.id}"`);
+    else byPath.set(norm, i);
+
+    s.plugins.forEach((p, j) => {
+      if (!isPluginLike(p)) fail(`${at}.agent.plugins[${j}]`, "not a zreader agent plugin");
+    });
+    const seen = new Set<string>();
+    for (const p of s.plugins) {
+      if (seen.has(p.name)) fail(`${at}.agent.plugins`, `two "${p.name}" plugins`);
+      seen.add(p.name);
+    }
+    // A shelf mounted at "/" already serves these from its relative routes.
+    if (norm !== "/") {
+      for (const p of s.plugins) {
+        for (const route of p.rootRoutes ?? []) {
+          const ownerShelf = rootClaims.get(route.path);
+          if (ownerShelf) fail(`${at}.agent.plugins`, `${route.path} is already claimed by "${ownerShelf}"`);
+          else rootClaims.set(route.path, s.id);
+        }
+      }
+    }
+  });
+
+  // Shelves cannot be nested (§2.3.1): one route each, so no longest-prefix rules.
+  for (let j = 1; j < shelves.length; j++) {
+    const inner = normalizeBasePath(shelves[j]!.basePath);
+    for (let i = 0; i < j; i++) {
+      const outer = normalizeBasePath(shelves[i]!.basePath);
+      if (inner === outer) continue; // duplicate, already reported
+      if (inner === "/") {
+        fail(`bookshelves[${j}].basePath`, '"/" would contain every other bookshelf; bookshelves cannot be nested');
+      } else if (outer === "/") {
+        fail(`bookshelves[${i}].basePath`, '"/" would contain every other bookshelf; bookshelves cannot be nested');
+      } else if (pathContains(outer, inner)) {
+        fail(
+          `bookshelves[${j}].basePath`,
+          `"${shelves[j]!.basePath}" is inside "${outer}" (bookshelf "${shelves[i]!.id}"); bookshelves cannot be nested`,
+        );
+      } else if (pathContains(inner, outer)) {
+        fail(
+          `bookshelves[${i}].basePath`,
+          `"${shelves[i]!.basePath}" is inside "${inner}" (bookshelf "${shelves[j]!.id}"); bookshelves cannot be nested`,
+        );
+      }
+    }
+  }
+}
+
+function warnMissingFolders(root: string, shelves: ResolvedShelf[]) {
+  if (!isDev()) return;
+  for (const s of shelves) {
+    const base = s.content.loader.base;
+    if (!existsSync(resolve(root, base))) console.warn(`[zreader] bookshelf "${s.id}": ${base} does not exist`);
+  }
+}
+
+// ---------------------------------------------------------------- resolve
 
 /**
  * Resolve the final config: package defaults ← reader.config.ts ← inline overrides.
@@ -230,24 +421,77 @@ export function resolveConfig(
   opts: { root?: string; source?: string } = {},
 ): ResolvedReaderConfig {
   const root = opts.root ?? (typeof process !== "undefined" && process.cwd ? process.cwd() : "/");
-  const reader = mergeConfig<ReaderClientOptions>(
-    structuredClone(DEFAULT_CLIENT_OPTIONS),
-    user?.reader,
-    inline?.reader,
-  );
-  const content = mergeConfig<ContentConfig>(defaultContentConfig(), user?.content, inline?.content);
+  const source = opts.source ?? "";
+  const issues: { path: string; message: string }[] = [];
 
-  const r = clientSchema.safeParse(reader);
-  if (!r.success) throw formatIssues(opts.source ?? "", "reader", r.error);
-  const c = contentSchema.safeParse(content);
-  if (!c.success) throw formatIssues(opts.source ?? "", "content", c.error);
+  const topReader = mergeConfig<ReaderClientOptions>(structuredClone(DEFAULT_CLIENT_OPTIONS), user?.reader, inline?.reader);
+  const topContent = mergeConfig<ContentConfig>(defaultContentConfig(), user?.content, inline?.content);
+  const topPlugins = [...(user?.agent?.plugins ?? []), ...(inline?.agent?.plugins ?? [])];
+  const bookshelves = user?.bookshelves ?? inline?.bookshelves;
 
-  return { root, content, reader };
+  let shelves: ResolvedShelf[];
+  if (bookshelves?.length) {
+    if (user?.reader?.basePath != null || inline?.reader?.basePath != null) {
+      issues.push({ path: "reader.basePath", message: "set basePath on each bookshelf instead" });
+    }
+    shelves = bookshelves.map((s, i) => resolveShelf(s, topReader, topContent, topPlugins, i === 0));
+    validateShelves(shelves, issues);
+    shelves.forEach((s, i) => {
+      const r = clientSchema.safeParse(s.reader);
+      if (!r.success) collect(r.error, `bookshelves[${i}].reader`, issues);
+      const c = contentSchema.safeParse(s.content);
+      if (!c.success) collect(c.error, `bookshelves[${i}].content`, issues);
+    });
+  } else {
+    // The implicit shelf: an existing reader.config.ts resolves to exactly one.
+    const r = clientSchema.safeParse(topReader);
+    if (!r.success) collect(r.error, "reader", issues);
+    const c = contentSchema.safeParse(topContent);
+    if (!c.success) collect(c.error, "content", issues);
+    shelves = [
+      {
+        id: DEFAULT_SHELF_ID,
+        basePath: topReader.basePath,
+        title: DEFAULT_SHELF_TITLE,
+        content: topContent,
+        reader: topReader,
+        plugins: mergePlugins(topPlugins),
+      },
+    ];
+  }
+
+  if (issues.length) {
+    throw new ReaderConfigError(
+      `Invalid reader config${source ? ` (${source})` : ""}:\n` + issues.map((i) => `  - ${i.path}: ${i.message}`).join("\n"),
+      issues,
+    );
+  }
+
+  warnMissingFolders(root, shelves);
+
+  return {
+    root,
+    content: shelves[0]!.content,
+    reader: shelves[0]!.reader,
+    shelves,
+    defaultShelf: shelves[0]!.id,
+  };
 }
 
-/** Only the serializable, client-safe half. */
-export function clientOptions(config: ResolvedReaderConfig): ReaderClientOptions {
-  return config.reader;
+/** Look a shelf up by id. The default shelf when `id` is omitted. */
+export function shelfById(config: ResolvedReaderConfig, id?: string): ResolvedShelf | undefined {
+  if (id == null || id === config.defaultShelf) return config.shelves[0];
+  return config.shelves.find((s) => s.id === id);
+}
+
+/** The default shelf. `shelves` is never empty, so this cannot be undefined. */
+export function defaultShelfOf(config: ResolvedReaderConfig): ResolvedShelf {
+  return config.shelves[0]!;
+}
+
+/** Only the serializable, client-safe half of a shelf (defaults to the default shelf). */
+export function clientOptions(config: ResolvedReaderConfig, shelfId?: string): ReaderClientOptions {
+  return (shelfById(config, shelfId) ?? config.shelves[0])!.reader;
 }
 
 export const CONFIG_FILE_NAMES = ["reader.config.ts", "reader.config.mts", "reader.config.mjs", "reader.config.js"];

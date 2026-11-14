@@ -51,7 +51,7 @@ Ids appear in URLs and in readers' storage keys: renaming a file changes its URL
 | `title` | string | — | Required when `book.json` exists |
 | `subtitle` | string | — | |
 | `authors` | string[] | `[]` | |
-| `description` | string | — | Shown on the shelf and used by `/llms.txt` |
+| `description` | string | — | Shown on the shelf and used by `llms.txt` |
 | `cover` | string | — | Image URL for the shelf card |
 | `chapters` | string[] | — | Explicit chapter order by id (see below) |
 
@@ -74,7 +74,7 @@ draft: false
 | Field | Type | Notes |
 | --- | --- | --- |
 | `title` | string | **Required** by the default schema |
-| `description` | string | Shown in chapter lists, `book.md` and `/llms.txt` |
+| `description` | string | Shown in chapter lists, `book.md` and `llms.txt` |
 | `part` | string | Groups consecutive chapters under a heading in the contents list |
 | `label` | string | Eyebrow above the chapter title (default: "Chapter N of M"); also prefixes the title in `.md` indexes (`Appendix A: API Endpoint Reference`) |
 | `number` | string or number | Short marker in lists; stored as a string |
@@ -119,7 +119,23 @@ import { getBooks, getBookMetas, getBook, getChapter, renderChapter, getStaticPa
 
 ### More than one content folder
 
-`defineBooks()` creates a separate API with its own content options, merged on top of the global config:
+Declare a [bookshelf](./configuration.md#bookshelves) per folder in `reader.config.ts`, then scope the calls to it:
+
+```ts
+import { getShelf, getShelves } from "zreader/content";
+
+const reports = getShelf("reports");
+const books = await reports.getBooks();       // only this shelf's books
+const shelf = await reports.shelf();          // its resolved config
+
+await getShelves();                            // every resolved shelf
+```
+
+`getShelf(id)` returns the same API as the module-level functions, scoped to one shelf: `getBooks`, `getBook`, `getBookMetas`, `getChapter`, `renderChapter`, `getStaticParams`, plus `shelf()`. Book caches are per shelf, so two shelves never share a catalogue. Omit the id for the [default shelf](./configuration.md#the-implicit-shelf), which is what the module-level `getBooks`, `getBook`, … use.
+
+### `defineBooks()` — the escape hatch
+
+`defineBooks()` creates a separate API with its own content options, merged on top of the global config. Use it for content that is **not** a shelf: a one-off loader in a script, or a set of chapters you render yourself.
 
 ```ts
 import { defineBooks, glob } from "zreader/content";
@@ -128,7 +144,7 @@ export const handbook = defineBooks({ loader: glob({ base: "./content/handbook" 
 const books = await handbook.getBooks();
 ```
 
-Pass the result to the agent handler as `createAgentHandler({ api: handbook })` to serve its `.md` twins.
+It gains no plugins and is not traced by `withReader`. For anything served over HTTP, declare a bookshelf instead; to serve a custom source as a shelf anyway, pass it to the agent handler as `createAgentHandler({ sources: [{ shelf, api: handbook }] })`.
 
 ## Compilation and caching
 

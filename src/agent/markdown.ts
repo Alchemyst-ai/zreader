@@ -11,6 +11,7 @@ import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import type { BookEntry, ChapterEntry, ChapterLookup } from "zreader/content";
 import type { BookMeta, ChapterMeta } from "zreader";
+import type { NotFoundInfo } from "../plugins/agent/types";
 
 /** Where the reader lives: absolute origin + the reader's basePath. */
 export interface AgentUrlContext {
@@ -24,6 +25,12 @@ export interface LlmsTxtOptions {
   /** H1 of llms.txt. Defaults to the book title (one book) or "Books". */
   title?: string;
   /** Summary line of llms.txt. */
+  description?: string;
+}
+
+/** Title and summary a shelf document can be headed with. */
+export interface ShelfOptions {
+  title?: string;
   description?: string;
 }
 
@@ -251,8 +258,9 @@ export function bookToMarkdown(book: BookMeta | BookEntry, ctx: AgentUrlContext)
 }
 
 /** Every book on the shelf, linking each book's `.md`. */
-export function shelfToMarkdown(books: Array<BookMeta | BookEntry>, ctx: AgentUrlContext): string {
-  const parts = ["# Books"];
+export function shelfToMarkdown(books: Array<BookMeta | BookEntry>, ctx: AgentUrlContext, opts: ShelfOptions = {}): string {
+  const parts = [`# ${opts.title ?? "Books"}`];
+  if (opts.description) parts.push(`> ${opts.description.replace(/\s*\n\s*/g, " ")}`);
   for (const book of books) {
     const head = `## ${link(book.title, markdownPageUrl(ctx, book.id))}`;
     const meta = [book.subtitle && `_${escapeText(book.subtitle)}_`, book.authors.length && `By ${book.authors.join(", ")}`, book.description]
@@ -281,5 +289,231 @@ export function llmsTxt(books: Array<BookMeta | BookEntry>, ctx: AgentUrlContext
     }
     parts.push(`## ${book.title}\n\n${lines.join("\n")}`);
   }
+  return parts.join("\n\n") + "\n";
+}
+
+// ---------------------------------------------------------------- frontmatter
+
+const FRONTMATTER_KEY = /^[A-Za-z_][\w-]*$/;
+
+/** True when `key` can appear as a YAML frontmatter field name. */
+export function isValidFrontmatterKey(key: string): boolean {
+  return FRONTMATTER_KEY.test(key);
+}
+
+/**
+ * Render a YAML frontmatter block. Field order is the object's insertion order.
+ * Every value is a JSON string, which is a valid YAML double-quoted scalar.
+ * `undefined` and empty values are omitted; `""` when nothing is left.
+ *
+ * Named `renderFrontmatter` so it doesn't clash with the `frontmatter()` plugin,
+ * or with "frontmatter" as zreader already uses it for chapter source metadata.
+ */
+export function renderFrontmatter(fields: Record<string, string | undefined>): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (!FRONTMATTER_KEY.test(key)) {
+      throw new Error(`zreader: "${key}" is not a valid frontmatter key (use letters, digits, '_' or '-')`);
+    }
+    if (value === undefined || value === "") continue;
+    lines.push(`${key}: ${JSON.stringify(value.replace(/\s+/g, " ").trim())}`);
+  }
+  return lines.length ? `---\n${lines.join("\n")}\n---\n\n` : "";
+}
+
+// ---------------------------------------------------------------- dates
+
+const LAST_UPDATED_KEYS = ["updated", "lastUpdated", "last_updated", "date"];
+
+function toIsoDate(value: unknown): string | undefined {
+  const ms =
+    value instanceof Date
+      ? value.getTime()
+      : typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Date.parse(value)
+          : NaN;
+  if (!Number.isFinite(ms)) return undefined;
+  try {
+    return new Date(ms).toISOString().slice(0, 10);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Anything a `last_updated` source may return. */
+export type LastUpdatedInput = string | Date | number | undefined;
+
+/**
+ * A chapter's `last_updated` (§5.4): the `lastUpdated` override, then the
+ * chapter's frontmatter (`updated`, `lastUpdated`, `last_updated`, `date`), then
+ * `mtimeMs`. Invalid dates are skipped. `YYYY-MM-DD`, in UTC.
+ *
+ * On CI and most hosts `mtimeMs` is the checkout time, because `git clone` does
+ * not preserve modification times. For dates that survive a deploy, set
+ * `updated:` in chapter frontmatter or pass a `lastUpdated` override.
+ */
+export function resolveLastUpdated(
+  entry: Pick<ChapterEntry, "data" | "mtimeMs">,
+  override?: (entry: ChapterEntry) => LastUpdatedInput,
+): string | undefined {
+  const sources: unknown[] = [];
+  if (override) sources.push(override(entry as ChapterEntry));
+  for (const key of LAST_UPDATED_KEYS) sources.push(entry.data?.[key]);
+  sources.push(entry.mtimeMs);
+  for (const s of sources) {
+    const iso = toIsoDate(s);
+    if (iso) return iso;
+  }
+  return undefined;
+}
+
+/** The newest `last_updated` across chapters. */
+export function newestLastUpdated(
+  entries: ChapterEntry[],
+  override?: (entry: ChapterEntry) => LastUpdatedInput,
+): string | undefined {
+  let best: string | undefined;
+  for (const entry of entries) {
+    const iso = resolveLastUpdated(entry, override);
+    if (iso && (!best || iso > best)) best = iso;
+  }
+  return best;
+}
+
+/** The newest `last_updated` across books (the newest of their chapters). */
+export function newestBookLastUpdated(
+  books: BookEntry[],
+  override?: (entry: ChapterEntry) => LastUpdatedInput,
+): string | undefined {
+  let best: string | undefined;
+  for (const book of books) {
+    const iso = newestLastUpdated(book.chapterEntries, override);
+    if (iso && (!best || iso > best)) best = iso;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- full text
+
+/** Shift every heading down by `by` levels, on the mdast. Depth is clamped at 6. */
+export async function demoteHeadings(markdown: string, by: number): Promise<string> {
+  if (!by) return markdown;
+  const processor = unified().use(remarkParse);
+  const tree = processor.parse(markdown) as unknown as Node;
+  const walk = (n: Node) => {
+    if (n.type === "heading") n.depth = Math.min(6, Number(n.depth) + by);
+    for (const child of n.children ?? []) walk(child);
+  };
+  walk(tree);
+  return unified()
+    .use(remarkGfm)
+    .use(remarkStringify, stringify)
+    .stringify(tree as never);
+}
+
+/** A chapter body without the 500-entry cache, so a big shelf can't thrash it. */
+async function uncachedBody(entry: ChapterEntry): Promise<string> {
+  return entry.format === "mdx"
+    ? mdxToMarkdown(entry.body).catch(() => entry.body)
+    : entry.format === "html"
+      ? htmlToMarkdown(entry.body)
+      : entry.body;
+}
+
+/**
+ * Every chapter of every book, concatenated (§6.3): H1 for the document, H2 per
+ * book, H3 per chapter, so chapter content starts at H4.
+ */
+export async function fullTextToMarkdown(
+  books: BookEntry[],
+  ctx: AgentUrlContext,
+  opts: ShelfOptions = {},
+): Promise<string> {
+  const title = opts.title ?? (books.length === 1 ? `${books[0]!.title} — full text` : "Books — full text");
+  const description =
+    opts.description ?? "Every book and chapter in this shelf, concatenated for agents.";
+  const parts = [`# ${title}`, `> ${description.replace(/\s*\n\s*/g, " ")}`];
+  for (const book of books) {
+    const bookParts = [`## ${book.title}`, `Source: ${pageUrl(ctx, book.id)}`];
+    if (book.description) bookParts.push(book.description);
+    for (const chapter of book.chapterEntries) {
+      const body = (await uncachedBody(chapter)).trim();
+      if (!body) continue;
+      const section: string[] = [];
+      // A body with its own H1 keeps it (demoted to H3); otherwise the title stands in.
+      if (!hasH1(body)) section.push(`### ${chapter.title}`);
+      section.push(await demoteHeadings(body, 2));
+      bookParts.push(section.join("\n\n"));
+    }
+    parts.push(bookParts.join("\n\n"));
+  }
+  return parts.join("\n\n") + "\n";
+}
+
+// ---------------------------------------------------------------- 404
+
+/** Options shared by `notFound()` and `notFoundToMarkdown()`. */
+export interface NotFoundMarkdownOptions {
+  /** H1. Default "Not found". */
+  title?: string;
+  maxBooks?: number;
+  maxChapters?: number;
+  /** Replace the body entirely. */
+  render?: (info: NotFoundInfo) => string;
+}
+
+function count(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** Where a truncated list points: this shelf's `llms.txt`, else its `.md`. */
+function overflowUrl(info: NotFoundInfo, ctx: AgentUrlContext): string {
+  const hasLlms = info.shelf.plugins.some((p) => p.name === "llmsTxt");
+  return hasLlms ? `${ctx.origin}${base(ctx.basePath)}/llms.txt` : markdownPageUrl(ctx);
+}
+
+/**
+ * A 404 document that lists the valid book and chapter ids of one shelf (§7.1).
+ */
+export function notFoundToMarkdown(
+  info: NotFoundInfo,
+  ctx: AgentUrlContext,
+  opts: NotFoundMarkdownOptions = {},
+): string {
+  if (opts.render) return opts.render(info);
+  const maxBooks = opts.maxBooks ?? 50;
+  const maxChapters = opts.maxChapters ?? 100;
+  const parts = [`# ${opts.title ?? "Not found"}`];
+
+  if (info.what === "chapter" && info.book) {
+    parts.push(
+      `No chapter \`${info.chapterId}\` in [${escapeText(info.book.title)}](${markdownPageUrl(ctx, info.bookId)}).`,
+    );
+  } else {
+    parts.push(`No book \`${info.bookId}\` in the [shelf](${info.shelfUrl}).`);
+  }
+
+  if (info.book) {
+    const chapters = info.book.chapters;
+    const lines = chapters
+      .slice(0, maxChapters)
+      .map((ch) => `- ${link(chapterName(ch), markdownPageUrl(ctx, info.bookId, ch.id))}`);
+    if (chapters.length > maxChapters) {
+      lines.push(`- …and ${chapters.length - maxChapters} more; see the [index](${overflowUrl(info, ctx)})`);
+    }
+    parts.push(`## Chapters in ${info.book.title}\n\n${lines.join("\n")}`);
+  }
+
+  const books = info.books;
+  const bookLines = books
+    .slice(0, maxBooks)
+    .map((b) => `- ${link(b.title, markdownPageUrl(ctx, b.id))} — ${count(b.chapters.length, "chapter", "chapters")}`);
+  if (books.length > maxBooks) {
+    bookLines.push(`- …and ${books.length - maxBooks} more; see the [index](${overflowUrl(info, ctx)})`);
+  }
+  parts.push(`## All books\n\n${bookLines.length ? bookLines.join("\n") : "_No books yet._"}`);
+  parts.push(`See the [shelf](${info.shelfUrl}).`);
   return parts.join("\n\n") + "\n";
 }

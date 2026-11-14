@@ -36,6 +36,7 @@ export default defineConfig([
       "next/server/index": "src/next/server/index.tsx",
       "rehype/index": "src/rehype/index.ts",
       "agent/index": "src/agent/index.ts",
+      "plugins/agent/index": "src/plugins/agent/index.ts",
       "virtual-config/index": "src/virtual-config/index.ts",
       "user-config/index": "src/user-config/index.ts",
       "stubs/server-only": "src/stubs/server-only.ts",

@@ -62,14 +62,17 @@ export function applyReaderConfig(base: NextConfig, setup: ReaderNextSetup, root
     return cfg;
   };
 
-  const contentGlob = toPosix(join(resolved.content.loader.base, "**/*"));
+  // Every shelf's content folder, not just the default one (§2.7).
+  const contentGlobs = Array.from(
+    new Set(resolved.shelves.map((s) => toPosix(join(s.content.loader.base, "**/*")))),
+  );
   const tracing = { ...(base.outputFileTracingIncludes ?? {}) };
   const allRoutes = "/**";
-  tracing[allRoutes] = Array.from(new Set([...(tracing[allRoutes] ?? []), contentGlob]));
+  tracing[allRoutes] = Array.from(new Set([...(tracing[allRoutes] ?? []), ...contentGlobs]));
   // The proxy/middleware entry is named "proxy" or "middleware" (no leading
   // slash, so "/**" misses it); zreader/agent reads chapters from the proxy.
   for (const entry of ["middleware", "proxy"]) {
-    tracing[entry] = Array.from(new Set([...(tracing[entry] ?? []), contentGlob]));
+    tracing[entry] = Array.from(new Set([...(tracing[entry] ?? []), ...contentGlobs]));
   }
 
   const externals = Array.from(new Set([...(base.serverExternalPackages ?? []), ...SERVER_EXTERNALS]));

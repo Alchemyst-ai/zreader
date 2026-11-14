@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^zreader\/config$/, replacement: r("./src/config/index.ts") },
+      { find: /^zreader\/plugins\/agent$/, replacement: r("./src/plugins/agent/index.ts") },
       { find: /^zreader\/react$/, replacement: r("./src/react/index.ts") },
       { find: /^zreader\/editor$/, replacement: r("./src/editor/index.tsx") },
       { find: /^zreader\/next\/client$/, replacement: r("./src/next/client/index.tsx") },

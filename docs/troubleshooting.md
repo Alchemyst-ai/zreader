@@ -34,18 +34,39 @@ A component or hook is rendered outside its provider. In Next.js, `ReaderRoot` g
 
 ## A server-only import fails in the browser
 
-`zreader/content`, `zreader/agent`, `zreader/virtual-config` and `zreader/next/server` resolve to a stub that throws in browser bundles. Move the call to a server component, a loader, or a build script.
+`zreader/content`, `zreader/agent`, `zreader/plugins/agent`, `zreader/virtual-config` and `zreader/next/server` resolve to a stub that throws in browser bundles. Move the call to a server component, a loader, or a build script. Plugins may only be declared in `reader.config.ts`, never imported into a client component.
 
 ## `.md` URLs return the HTML page or a 404
 
-- **Next.js:** check that `proxy.ts` (Next 16) or `middleware.ts` (Next 15.5, with `runtime: "nodejs"`) exists at the project root (or in `src/`), and that its `matcher` matches `reader.basePath`. With `basePath: "/read"`, the matcher is `["/read/:path*.md", "/read.md", "/llms.txt"]`.
+- **Next.js:** check that `proxy.ts` (Next 16) or `middleware.ts` (Next 15.5, with `runtime: "nodejs"`) exists at the project root (or in `src/`), and that its `matcher` covers every shelf's `basePath`. See [Agent-readable content](./agent.md#nextjs) for the recommended matcher.
 - **Other frameworks:** the handler must run before your router or static file server. A `books/:book/:chapter` route also matches `intro.md`.
 - A Markdown 404 (`# Not found`) means the handler ran but the book or chapter doesn't exist. Ids are case-sensitive, and drafts are 404 in production.
 - PDFs and other non-chapter files never have a twin. See [Formats](./formats.md#pdf).
 
+### `[zreader] … reached the agent handler, but no bookshelf has basePath "…"`
+
+A request that looks like an agent route (`.md`, `/llms.txt`, `/llms-full.txt`, `POST …/mcp`) arrived, but no shelf is mounted there. This is what a stale `matcher` looks like after a `basePath` was renamed. Update `matcher` in `proxy.ts` to the shelf's new base path.
+
+### `[zreader] <ReaderRoot shelf="…" agent> links to …, but … is not served by createAgentHandler()`
+
+`<ReaderRoot agent>` renders `.md` links, but the proxy matcher doesn't cover that shelf, so they 404. Add the quoted matcher entries to `proxy.ts`.
+
+### `[zreader] This reader's basePath is "…", but it is mounted at …`
+
+The `app/` folder and the shelf's `basePath` disagree, so every link the reader builds is wrong. Rename the folder to match `basePath`, or set `basePath` back.
+
+These warnings are development-only and fire once per process per shelf. Silence them with `createAgentHandler({ devWarnings: false })` or `<ReaderRoot devWarnings={false}>`.
+
+## `Invalid reader config` mentions a bookshelf
+
+Shelves are validated at startup. See [Bookshelves → Validation](./configuration.md#validation) for every rule and its message. The two you hit most:
+
+- `bookshelves[1].basePath: "…" is inside "…"; bookshelves cannot be nested` — one route per shelf. Use a sibling shelf, or a `part` within a book, instead of a nested one.
+- `bookshelves[1].agent.plugins: /llms.txt is already claimed by "books"` — only one shelf may claim the site root. Remove `root: true` from all but one.
+
 ## `.md` URLs 404 or are empty after deploying
 
-The handler reads `content/books/**` at runtime, so the files must be deployed with the server.
+The handler reads the content folder at runtime, so the files must be deployed with the server — every shelf's folder, not just `content/books`.
 
 - **Next.js with webpack:** `withReader` adds them to the proxy's file trace.
 - **Next.js with Turbopack** (the default in Next 16): Next.js doesn't apply tracing includes to the proxy. `next start` and `output: "standalone"` work, but a host that deploys the proxy as a separate function may not include the files. Build with `next build --webpack`, or check the `.md` URLs after each deploy.

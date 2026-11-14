@@ -7,7 +7,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | If you want to… | Read |
 | --- | --- |
 | Get a reader running in Next.js or React | [Getting started](./getting-started.md) |
-| Understand how the pieces fit | [Concepts](./concepts.md) |
+| Understand how the pieces fit | [Concepts](./concepts.md), then [Architecture](./architecture.md) |
 
 ## Guides
 
@@ -18,7 +18,8 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | [React](./react.md) | `ReaderProvider`, the components, the top bar, hooks, Vite, React Router, MDX |
 | [Next.js](./nextjs.md) | `withReader`, `ReaderRoot`, `ReaderChapter`, static params, deployment |
 | [Reader features](./reader-features.md) | Highlights, notes, bookmarks, progress, scratchpad, settings, backup, storage |
-| [Agent-readable content](./agent.md) | `.md` twins of every page, `/llms.txt`, `createAgentHandler()` in any server |
+| [Agent-readable content](./agent.md) | `.md` twins of every page, bookshelves, the plugin system, `createAgentHandler()` in any server |
+| [Agent plugins](./plugins.md) | The built-ins (`llms.txt`, MCP, CORS…), the pipeline, and how to write your own |
 | [Copy Reference](./copy-reference.md) | The "Copy reference" button, Open in ChatGPT / Claude / Grok, `<MarkdownAlternate>` |
 | [Formats: Markdown, MDX, HTML, PDF](./formats.md) | What each format does in the reader and in its `.md` twin |
 | [Styling](./styling.md) | `styles.css` vs `tailwind.css`, theme tokens, themes |
@@ -27,6 +28,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 
 | Page | Covers |
 | --- | --- |
+| [Architecture](./architecture.md) | Entry points, the browser/server split, config resolution, the request and render pipelines, the build |
 | [API reference](./api-reference.md) | Every entry point and its exports |
 | [Troubleshooting](./troubleshooting.md) | Common errors and how to fix them |
 
@@ -44,6 +46,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | `zreader/next/client` | Browser | `NextReaderProvider` (provider bound to `next/link`) |
 | `zreader/next/server` | Server components | `ReaderRoot`, `ReaderChapter`, `getBookParams`, `getChapterParams` |
 | `zreader/agent` | Node | `createAgentHandler()` and the Markdown converters |
+| `zreader/plugins/agent` | Node | Opt-in agent plugins: `frontmatter`, `llmsTxt`, `notFound`, `cors`, `mcp`, `disable` |
 | `zreader/agent/react` | Browser | `CopyReference`, `MarkdownAlternate` and URL helpers |
 | `zreader/styles.css`, `zreader/tailwind.css`, `zreader/reader.css` | CSS | Stylesheets |
 
