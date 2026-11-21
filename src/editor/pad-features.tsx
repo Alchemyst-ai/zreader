@@ -8,14 +8,14 @@ import { MATH_NODE_TYPES, markdownHasMath, mathExtensions } from "./math";
 
 /** What the reader's setup provides; each feature turns on when its part is present. */
 export interface PadFeatureContext {
-  math: MathLoader | null;
+  mathLoader: MathLoader | null;
 }
 
 const math: PadFeature<PadFeatureContext> = {
   name: "math",
   nodeTypes: MATH_NODE_TYPES,
   markdownHas: markdownHasMath,
-  activate: ({ math: loader }) =>
+  activate: ({ mathLoader: loader }) =>
     loader && {
       extensions: mathExtensions(loader),
       toolbar: (editor) => (

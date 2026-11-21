@@ -299,7 +299,7 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
   };
 
   const mathLoader = useMathLoader();
-  const features = useMemo(() => resolvePadFeatures({ math: mathLoader }, PAD_FEATURES), [mathLoader]);
+  const features = useMemo(() => resolvePadFeatures({ mathLoader }, PAD_FEATURES), [mathLoader]);
   const initial = features.contentFor(pad);
   const editor = useEditor({
     immediatelyRender: false,
