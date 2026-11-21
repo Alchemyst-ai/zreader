@@ -54,6 +54,8 @@ Highlights are anchored to **block ids** derived from each block's text (`p-3fa9
 
 **Each scratchpad editor has its own Markdown parser.** Tiptap's Markdown extension registers tokenizers on a shared `marked` instance by default, so the pad's math rules would have changed every other Tiptap editor on the page, silently deleting `$…$` text in an app's own editor. A private `marked` instance per editor costs one dependency.
 
+**Optional pad features share one registry.** Each optional feature changes three things: which extensions load, whether a pad's cached JSON still matches the editor, and the toolbar. Spreading those checks through the editor per feature would have meant three edits for every new one, and getting the JSON check wrong loses or garbles a reader's notes. The registry keeps the rule in one place: cached JSON is only trusted when it was made with the same features, and the Markdown is the fallback.
+
 ## Storage
 
 Three stores, each for the kind of data it handles well: `localStorage` for small records (synchronous, tab sync through `storage` events), IndexedDB for images readers add (binary, large, content-hash ids so duplicates are stored once), and the Cache API for saved books. Records never embed binary data; they refer to images as `zr-blob:<id>`, which keeps localStorage small and lets garbage collection find unreferenced images by scanning text.
@@ -81,6 +83,8 @@ Every page has a `.md` twin produced from the **source**, not the rendered HTML,
 
 ## Further reading
 
+- [Architecture decision records](./adr/) — decisions recorded one per file, starting with RunnableCode (code readers and authors can run)
+- [Glossary](../GLOSSARY.md) — the project's domain terms
 - [Architecture](./architecture.md) — entry points, boundaries and pipelines
 - [Images](./images.md), [Math](./math.md), [Reader features](./reader-features.md) — behaviour in detail
 - [Production checklist](./production-checklist.md) — what to verify before shipping

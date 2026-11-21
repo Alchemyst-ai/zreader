@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Groundwork for RunnableCode, code readers can run in the scratchpad ([#2](https://github.com/Alchemyst-ai/zreader/issues/2)). Nothing changes for readers or site owners yet.
+
+- **Scratchpad:** optional features (math today) are registered in one list that decides the editor's extensions, its toolbar and whether a pad's cached JSON can be reused. Behaviour is unchanged.
+- **Docs:** a [glossary](./GLOSSARY.md) of domain terms and [architecture decision records](./docs/adr/) for RunnableCode: the browser runs code by default, Outputs are stored in the pad's Markdown, Stop restarts the Kernel, and how Dangerous permissions are granted.
+
 ## 0.4.0
 
 **Images.** Chapters can show images from files next to the chapter, URLs and base64 data URIs, in `.md`, `.mdx` and `.html`. See [Images](./docs/images.md).

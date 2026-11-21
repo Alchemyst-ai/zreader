@@ -225,13 +225,15 @@ Three stores, by kind of data:
 
 **The scratchpad's Markdown.** Each editor gets its own `marked` instance, so the math tokenizers it registers never reach other Tiptap editors on the page. Images and math are atom nodes with custom views; the stored format stays Markdown.
 
+**Optional pad features.** Features that only exist when the reader's setup provides something (math today, needing a math loader) are registered in one list, `PAD_FEATURES`. Each feature declares the node types it adds, how to spot it in Markdown, and the extensions and toolbar item it turns on. `resolvePadFeatures` turns that list into the editor's extensions and toolbar, and decides which content to load: a pad's cached JSON is used only when it was made with the same features that are on now; otherwise the editor loads the Markdown. So a pad saved with math still opens, as plain text, on a page without a math loader, and a pad saved without it is reparsed once math is turned on. A new optional feature is one more entry in the list, not new branches in the editor.
+
 ## Source layout
 
 ```
 src/
   core/            zreader            store, storage, anchoring, blocks, backup, blob store, types
   react/           zreader/react      provider, components, hooks, shadcn/ui parts
-  editor/          zreader/editor     the Tiptap scratchpad (lazy-loaded), image and math nodes
+  editor/          zreader/editor     the Tiptap scratchpad (lazy-loaded), image and math nodes, the optional-feature registry
   math/            zreader/math/*     scratchpad math loaders (KaTeX, Temml)
   sw/              zreader/sw         the offline service worker script
   rehype/          zreader/rehype     rehypeBlocks
