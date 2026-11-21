@@ -1,0 +1,389 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Not production code, not published (package.json "files" is dist only).
+  Question: can a zreader page run a reader's Python and JS/TS in a Kernel that keeps its state
+  between runs, without any server, while the code cannot reach the network or the reader's data?
+  Open over http (python3 -m http.server) or by double-click, in Chrome, Firefox and Safari.
+  The liftable part is the three <script type="text/plain"> sources plus the KernelHost class.
+
+  VERDICT (2026-11-22): yes. All 16 checks pass in Chromium 151, Firefox 153 and WebKit 26.5
+  (Playwright, headless), served over http and from file://. Run PROTOTYPE-run-checks.py to repeat.
+  Found on the way: numpy needs loadPackagesFromImports before runPythonAsync, and WebKit hangs a
+  Python run on a CSP-blocked fetch unless the worker rethrows a fresh error (see the fetch wrapper).
+  Not covered: real Safari / iOS, cold-start time, memory, a real JS/TS parser (the rewrite is naive).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE · Browser Kernel</title>
+<style>
+  :root { --accent: #2f6fdf; --ok: #1f8a4c; --bad: #c0392b; --muted: #667; font: 15px/1.5 system-ui, sans-serif; color: #1b1d22; }
+  body { max-width: 980px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 } h2 { font-size: 1.05rem; margin: 1.6rem 0 .5rem }
+  .lede { color: var(--muted); margin: .3rem 0 1rem }
+  .banner { background: #fff6d6; border: 1px solid #e8d48a; padding: .5rem .8rem; border-radius: 6px; font-size: .9rem }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem }
+  .card { border: 1px solid #dde; border-radius: 8px; padding: .8rem }
+  .card h3 { margin: 0 0 .4rem; font-size: .95rem; display: flex; justify-content: space-between }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; font: 13px/1.4 ui-monospace, monospace }
+  pre { background: #f5f6f8; padding: .5rem; border-radius: 6px; min-height: 2.5rem; max-height: 200px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; margin: .5rem 0 0 }
+  button { font: inherit; padding: .3rem .7rem; border-radius: 6px; border: 1px solid #ccd; background: #fff; cursor: pointer }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent) }
+  .row { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .4rem }
+  .state { font-size: .85rem; color: var(--muted) } .state b { color: #1b1d22 }
+  .changed { background: #fff3b0 }
+  .tabs button[aria-selected=true] { border-color: var(--accent); color: var(--accent) }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem } td, th { border-bottom: 1px solid #eee; padding: .3rem .4rem; text-align: left; vertical-align: top }
+  .pass { color: var(--ok); font-weight: 600 } .fail { color: var(--bad); font-weight: 600 } .pending { color: var(--muted) }
+  .stderr { color: var(--bad) } .system { color: var(--muted); font-style: italic } .result { color: var(--accent) }
+</style>
+</head>
+<body>
+<h1>Browser Kernel: prototype</h1>
+<p class="lede">Can a reader's Python and JavaScript run in the reader's own browser, keep their variables between runs, and still be unable to reach the internet or the reader's saved notes?</p>
+<p class="banner">Throwaway prototype for zreader RunnableCode (see <code>docs/adr/0001</code>). The first Python run downloads about 10&nbsp;MB from jsDelivr.</p>
+
+<h2>Checks</h2>
+<div class="row"><button class="primary" id="run-checks">Run all checks</button><span class="state" id="ua"></span></div>
+<table id="checks"><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table>
+
+<h2>Free play</h2>
+<div class="grid" id="kernels"></div>
+
+<h2>Guided walkthroughs</h2>
+<div class="tabs row" id="tabs"></div>
+<div class="card" id="walk"></div>
+
+<!-- ======================= liftable: iframe bootstrap (runs in the opaque-origin iframe) ======================= -->
+<script type="text/plain" id="boot-src">
+(() => {
+  const CDN = "https://cdn.jsdelivr.net";
+  // 1. Apply the CSP from script: 'self' means nothing in an opaque origin, so a <meta> in srcdoc can't be used up front.
+  const csp = document.createElement("meta");
+  csp.httpEquiv = "Content-Security-Policy";
+  csp.content = [
+    "default-src 'none'",
+    `script-src blob: 'unsafe-eval' 'wasm-unsafe-eval' ${CDN}`,
+    "worker-src blob:",
+    `connect-src ${CDN}`,
+  ].join("; ");
+  document.head.append(csp);
+
+  const violations = [];
+  document.addEventListener("securitypolicyviolation", (e) => violations.push(e.violatedDirective + " " + e.blockedURI));
+
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  const kernels = new Map(); // kernelId -> { worker, language, ready: Promise }
+
+  function startWorker(kernelId, language) {
+    // Chromium refuses module workers from blob: URLs in opaque-origin iframes, so a classic worker import()s the module.
+    const moduleUrl = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+    const loaderUrl = URL.createObjectURL(new Blob([
+      `import(${JSON.stringify(moduleUrl)}).catch((e) => postMessage({ type: "boot-error", message: String(e) }));`,
+    ], { type: "text/javascript" }));
+    const worker = new Worker(loaderUrl);
+    const k = { worker, language };
+    k.ready = new Promise((resolve, reject) => {
+      worker.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === "worker-ready") {
+          // Safari fails if blob URLs are revoked right after new Worker(); revoke once the module is running.
+          URL.revokeObjectURL(moduleUrl); URL.revokeObjectURL(loaderUrl);
+          worker.onmessage = (ev) => port.postMessage({ ...ev.data, kernelId });
+          resolve();
+        } else if (m.type === "boot-error") reject(new Error(m.message));
+      };
+      worker.onerror = (e) => reject(new Error(e.message || "worker failed to start"));
+    });
+    kernels.set(kernelId, k);
+    return k;
+  }
+
+  function stopWorker(kernelId) {
+    const k = kernels.get(kernelId);
+    if (k) { k.worker.terminate(); kernels.delete(kernelId); }
+  }
+
+  port.onmessage = async (e) => {
+    const m = e.data;
+    if (m.type === "run") {
+      let k = kernels.get(m.kernelId) ?? startWorker(m.kernelId, m.language);
+      try { await k.ready; } catch (err) {
+        stopWorker(m.kernelId);
+        port.postMessage({ kernelId: m.kernelId, runId: m.runId, type: "error", name: "BootError", message: err.message });
+        port.postMessage({ kernelId: m.kernelId, runId: m.runId, type: "exit", ok: false });
+        return;
+      }
+      k.worker.postMessage(m);
+    } else if (m.type === "restart") {
+      stopWorker(m.kernelId);
+      port.postMessage({ kernelId: m.kernelId, type: "restarted" });
+    } else if (m.type === "probe") {
+      // What can the iframe itself reach?
+      const r = { origin: self.origin, cspApplied: !!document.querySelector("meta[http-equiv]") };
+      try { localStorage.length; r.localStorage = "readable"; } catch (err) { r.localStorage = "blocked: " + err.name; }
+      try { document.cookie; r.cookie = "readable"; } catch (err) { r.cookie = "blocked: " + err.name; }
+      try { parent.document.title; r.parentDom = "readable"; } catch (err) { r.parentDom = "blocked: " + err.name; }
+      try { await fetch("https://example.com/", { mode: "no-cors" }); r.network = "reachable"; } catch (err) { r.network = "blocked"; }
+      r.violations = violations.slice();
+      port.postMessage({ type: "probe-result", probeId: m.probeId, result: r });
+    }
+  };
+
+  parent.postMessage({ type: "zr-kernel-ready" }, "*", [channel.port2]);
+})();
+</script>
+
+<!-- ======================= liftable: kernel worker module (one per Kernel) ======================= -->
+<script type="text/plain" id="worker-src">
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.8/full/";
+let currentRun = null;
+const emit = (type, data) => postMessage({ runId: currentRun, type, ...data });
+// WebKit rejects CSP-blocked fetches with a TypeError that Pyodide cannot turn into a Python exception
+// (_future_helper.set_exception raises), so the awaiting run hangs forever. Rethrow a fresh error instead.
+const rawFetch = self.fetch.bind(self);
+self.fetch = (...args) => rawFetch(...args).catch((e) => { throw new TypeError(`fetch failed: ${String(e?.message ?? e)}`); });
+
+// ---- JS/TS: persistent scope lives on globalThis ----
+for (const level of ["log", "info", "debug", "warn", "error"]) {
+  console[level] = (...args) => emit(level === "warn" || level === "error" ? "stderr" : "stdout",
+    { text: args.map((a) => (typeof a === "string" ? a : safeFormat(a))).join(" ") + "\n" });
+}
+function safeFormat(v) { try { return JSON.stringify(v) ?? String(v); } catch { return String(v); } }
+// PROTOTYPE ONLY: naive line-based rewrite. The real Kernel needs a parser (TS types stripped by sucrase first).
+function toAsyncBody(code) {
+  const lines = code.replace(/^(\s*)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/gm, "$1globalThis.$2 =").split("\n");
+  let i = lines.length - 1;
+  while (i >= 0 && !lines[i].trim()) i--;
+  if (i >= 0 && !/^\s*(\}|\/\/|if\b|for\b|while\b|function\b|class\b|return\b|throw\b|try\b|globalThis\.\w+\s*=)/.test(lines[i]) && !/[;{]\s*$/.test(lines[i]))
+    lines[i] = "return (" + lines[i] + ")";
+  return lines.join("\n");
+}
+const AsyncFunction = (async () => {}).constructor;
+async function runJs(code) {
+  const value = await new AsyncFunction(toAsyncBody(code))();
+  if (value !== undefined) emit("result", { text: safeFormat(value) });
+}
+
+// ---- Python: Pyodide, globals persist for the life of this worker ----
+let pyodide = null;
+async function getPyodide() {
+  if (!pyodide) {
+    emit("system", { text: "Downloading Python runtime…\n" });
+    const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
+    pyodide = await loadPyodide({ indexURL: PYODIDE });
+  }
+  return pyodide;
+}
+async function runPython(code) {
+  const py = await getPyodide();
+  py.setStdout({ batched: (s) => emit("stdout", { text: s + "\n" }) });
+  py.setStderr({ batched: (s) => emit("stderr", { text: s + "\n" }) });
+  await py.loadPackagesFromImports(code); // bundled packages (numpy, pandas, …) come from indexURL
+  const value = await py.runPythonAsync(code); // returns the value of a trailing expression, Jupyter-style
+  if (value !== undefined) {
+    const repr = py.globals.get("repr");
+    emit("result", { text: String(repr(value)) });
+    repr.destroy?.(); value?.destroy?.();
+  }
+}
+
+self.onmessage = async (e) => {
+  const m = e.data;
+  if (m.type !== "run") return;
+  currentRun = m.runId;
+  const t0 = performance.now();
+  try {
+    await (m.language === "python" ? runPython(m.code) : runJs(m.code));
+    emit("exit", { ok: true, ms: Math.round(performance.now() - t0) });
+  } catch (err) {
+    emit("error", { name: err?.name ?? "Error", message: String(err?.message ?? err).trim() });
+    emit("exit", { ok: false, ms: Math.round(performance.now() - t0) });
+  }
+};
+postMessage({ type: "worker-ready" });
+</script>
+
+<script>
+// ======================= liftable: KernelHost (runs in the reader page) =======================
+class KernelHost {
+  #iframe; #port; #listeners = new Set(); #seq = 0;
+
+  async start() {
+    const boot = document.getElementById("boot-src").textContent;
+    const worker = document.getElementById("worker-src").textContent;
+    const src = `const WORKER_SRC = ${JSON.stringify(worker)};\n${boot}`.replace(/<\/script/gi, "<\\/script");
+    this.#iframe = Object.assign(document.createElement("iframe"), { hidden: true, srcdoc: `<!doctype html><meta charset="utf-8"><script>${src}<\/script>` });
+    this.#iframe.setAttribute("sandbox", "allow-scripts");
+    const ready = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("iframe never reported ready")), 10000);
+      const onMessage = (e) => {
+        // Only our own iframe, with the "null" origin a sandboxed iframe has, may hand us the port.
+        if (e.source !== this.#iframe.contentWindow || e.origin !== "null" || e.data?.type !== "zr-kernel-ready" || !e.ports[0]) return;
+        removeEventListener("message", onMessage); clearTimeout(timer); resolve(e.ports[0]);
+      };
+      addEventListener("message", onMessage);
+    });
+    document.body.append(this.#iframe);
+    this.#port = await ready;
+    this.#port.onmessage = (e) => this.#listeners.forEach((l) => l(e.data));
+  }
+
+  /** Streams RunEvents for one run until its exit (or a restart of the Kernel). */
+  async *run(kernelId, language, code) {
+    const runId = ++this.#seq, queue = []; let wake;
+    const listener = (m) => {
+      if (m.kernelId !== kernelId) return;
+      if (m.runId === runId || m.type === "restarted") { queue.push(m); wake?.(); }
+    };
+    this.#listeners.add(listener);
+    this.#port.postMessage({ type: "run", kernelId, language, code, runId });
+    try {
+      for (;;) {
+        while (!queue.length) await new Promise((r) => (wake = r));
+        const ev = queue.shift(); yield ev;
+        if (ev.type === "exit" || ev.type === "restarted") return;
+      }
+    } finally { this.#listeners.delete(listener); }
+  }
+
+  /** Stop = terminate the worker; the next run starts a fresh Kernel (ADR 0003). */
+  restart(kernelId) { this.#port.postMessage({ type: "restart", kernelId }); }
+
+  probe() {
+    const probeId = ++this.#seq;
+    return new Promise((resolve) => {
+      const l = (m) => { if (m.type === "probe-result" && m.probeId === probeId) { this.#listeners.delete(l); resolve(m.result); } };
+      this.#listeners.add(l);
+      this.#port.postMessage({ type: "probe", probeId });
+    });
+  }
+}
+
+// ======================= throwaway page =======================
+const host = new KernelHost();
+const hostReady = host.start();
+const KERNELS = {
+  py: { label: "Python Kernel", language: "python", sample: "x = 41\nprint('x is', x)\nx + 1" },
+  js: { label: "JavaScript Kernel", language: "javascript", sample: "const greeting = 'hello'\nconsole.log(greeting)\nawait Promise.resolve(greeting.length)" },
+};
+const ui = {};
+for (const [id, k] of Object.entries(KERNELS)) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<h3>${k.label}<span class="state" data-s></span></h3><textarea data-c>${k.sample}</textarea>
+    <div class="row"><button class="primary" data-run>Run</button><button data-stop>Stop</button></div><pre data-o></pre>`;
+  document.getElementById("kernels").append(card);
+  ui[id] = { status: "not started", runs: 0, last: "—", el: card };
+  card.querySelector("[data-run]").onclick = () => runIn(id);
+  card.querySelector("[data-stop]").onclick = () => stopKernel(id);
+  render(id);
+}
+function render(id, changed) {
+  const s = ui[id], el = s.el.querySelector("[data-s]");
+  el.innerHTML = `Kernel: <b>${s.status}</b> · runs: <b>${s.runs}</b> · last run: <b>${s.last}</b>`;
+  el.classList.toggle("changed", !!changed); setTimeout(() => el.classList.remove("changed"), 900);
+}
+function out(id, cls, text) {
+  const pre = ui[id].el.querySelector("[data-o]");
+  const span = Object.assign(document.createElement("span"), { className: cls, textContent: text });
+  pre.append(span); pre.scrollTop = pre.scrollHeight;
+}
+async function runIn(id, code) {
+  await hostReady;
+  const ta = ui[id].el.querySelector("[data-c]");
+  if (code !== undefined) ta.value = code;
+  ui[id].el.querySelector("[data-o]").textContent = "";
+  ui[id].status = "running"; render(id, true);
+  const collected = [];
+  for await (const ev of host.run(id, KERNELS[id].language, ta.value)) {
+    collected.push(ev);
+    if (ev.type === "stdout" || ev.type === "system") out(id, ev.type === "system" ? "system" : "", ev.text);
+    else if (ev.type === "stderr") out(id, "stderr", ev.text);
+    else if (ev.type === "result") out(id, "result", ev.text + "\n");
+    else if (ev.type === "error") out(id, "stderr", `${ev.name}: ${ev.message}\n`);
+    else if (ev.type === "restarted") { out(id, "system", "Kernel restarted, variables cleared.\n"); ui[id].status = "restarted"; ui[id].last = "stopped"; }
+    else if (ev.type === "exit") { ui[id].status = "idle"; ui[id].runs++; ui[id].last = `${ev.ok ? "ok" : "failed"} in ${ev.ms} ms`; }
+  }
+  render(id, true);
+  return collected;
+}
+function stopKernel(id) { host.restart(id); }
+
+// ---- automated checks (also read by the cross-browser runner as window.__results) ----
+const CHECKS = [
+  ["Sandbox frame starts and has an opaque origin", async () => { const p = await host.probe(); return [p.origin === "null", `origin=${p.origin}`]; }],
+  ["Frame cannot read the reader's storage or page", async () => { const p = await host.probe(); return [p.localStorage.startsWith("blocked") && p.parentDom.startsWith("blocked"), `localStorage ${p.localStorage}; parent page ${p.parentDom}`]; }],
+  ["CSP applied from script blocks the frame's network", async () => { const p = await host.probe(); return [p.network === "blocked", `network ${p.network}; violations: ${p.violations.join(", ") || "none"}`]; }],
+  ["JS Kernel runs (classic worker import()s a blob module)", async () => { const ev = await runIn("js", "1 + 1"); const r = ev.find((e) => e.type === "result"); return [r?.text === "2", r?.text ?? JSON.stringify(ev.at(-2))]; }],
+  ["JS Kernel keeps variables between runs", async () => { await runIn("js", "const n = 20"); const ev = await runIn("js", "n * 2 + 2"); const r = ev.find((e) => e.type === "result"); return [r?.text === "42", r?.text ?? "no result"]; }],
+  ["JS Kernel re-runs a const declaration", async () => { await runIn("js", "const n = 1"); const ev = await runIn("js", "const n = 2\nn"); const r = ev.find((e) => e.type === "result"); return [r?.text === "2", r?.text ?? JSON.stringify(ev)]; }],
+  ["JS Kernel supports top-level await and console", async () => { const ev = await runIn("js", "console.log('hi')\nawait new Promise((r) => setTimeout(() => r(7), 10))"); return [ev.some((e) => e.text === "hi\n") && ev.some((e) => e.type === "result" && e.text === "7"), ev.map((e) => e.type).join(",")]; }],
+  ["JS Kernel cannot reach the network", async () => { const ev = await runIn("js", "await fetch('https://example.com/', { mode: 'no-cors' })\n'reached'"); const r = ev.find((e) => e.type === "result"), err = ev.find((e) => e.type === "error"); return [!r && err?.name !== "SyntaxError", r ? "reached example.com" : `${err?.name}: ${err?.message}`]; }],
+  ["Control: JS Kernel can still reach the allowed CDN", async () => { const ev = await runIn("js", "const res = await fetch('https://cdn.jsdelivr.net/pyodide/v314.0.8/full/pyodide-lock.json')\nres.status"); const r = ev.find((e) => e.type === "result"); return [r?.text === "200", r?.text ?? ev.find((e) => e.type === "error")?.message]; }],
+  ["JS Kernel cannot see the reader's IndexedDB", async () => { const ev = await runIn("js", "await new Promise((res, rej) => { try { const q = indexedDB.open('zreader'); q.onsuccess = () => res(q.result.objectStoreNames.length); q.onerror = () => rej(q.error); } catch (e) { rej(e) } })"); const r = ev.find((e) => e.type === "result"); return [!r || r.text === "0", r ? `opened an empty database with ${r.text} stores (opaque origin)` : ev.find((e) => e.type === "error")?.message]; }],
+  ["Python Kernel loads Pyodide and shows the last expression", async () => { const ev = await runIn("py", "x = 41\nprint('x is', x)\nx + 1"); const r = ev.find((e) => e.type === "result"); return [r?.text === "42" && ev.some((e) => e.text === "x is 41\n"), r?.text ?? ev.filter((e) => e.type === "error").map((e) => e.message).join(" ")]; }],
+  ["Python Kernel keeps variables between runs", async () => { const ev = await runIn("py", "x * 2"); const r = ev.find((e) => e.type === "result"); return [r?.text === "82", r?.text ?? "no result"]; }],
+  ["Python Kernel loads a bundled package (numpy) from indexURL", async () => { const ev = await runIn("py", "import numpy as np\nint(np.arange(5).sum())"); const r = ev.find((e) => e.type === "result"); return [r?.text === "10", r?.text ?? ev.filter((e) => e.type === "error").map((e) => e.message.split("\n").at(-1)).join(" ")]; }],
+  ["Python Kernel cannot reach the network", async () => { const ev = await runIn("py", "from js import fetch\nawait fetch('https://example.com/', mode='no-cors')\n'reached'"); const r = ev.find((e) => e.type === "result"), err = ev.find((e) => e.type === "error"); return [!r && !!err, r ? "reached example.com" : `${err?.name}: ${err?.message.split("\n").at(-1)}`]; }],
+  ["Stop ends a runaway loop and restarts the Kernel", async () => {
+    const pending = runIn("py", "while True: pass");
+    await new Promise((r) => setTimeout(r, 500)); stopKernel("py");
+    const ev = await pending;
+    return [ev.at(-1)?.type === "restarted", ev.map((e) => e.type).join(",")];
+  }],
+  ["After Stop, variables are gone", async () => { const ev = await runIn("py", "x"); const err = ev.find((e) => e.type === "error"); return [!!err && /NameError/.test(err.message), err ? err.message.split("\n").at(-1) : "x still defined"]; }],
+];
+async function runChecks() {
+  const tbody = document.querySelector("#checks tbody");
+  tbody.textContent = "";
+  const results = [];
+  for (const [name, fn] of CHECKS) {
+    const tr = tbody.insertRow();
+    tr.innerHTML = `<td>${name}</td><td class="pending">running…</td><td></td>`;
+    let pass = false, detail = "";
+    try { [pass, detail] = await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error("timed out after 90 s")), 90000))]); }
+    catch (err) { detail = String(err?.message ?? err); }
+    tr.cells[1].className = pass ? "pass" : "fail"; tr.cells[1].textContent = pass ? "pass" : "fail";
+    tr.cells[2].textContent = detail ?? "";
+    results.push({ name, pass, detail });
+  }
+  window.__results = results;
+  return results;
+}
+document.getElementById("run-checks").onclick = runChecks;
+document.getElementById("ua").textContent = navigator.userAgent;
+
+// ---- guided walkthroughs ----
+const WALKS = [
+  ["Variables survive between runs", "Run the first step, then the second. The second run uses a variable the first one made, so the Kernel kept its state.",
+    [["Make a variable", () => runIn("py", "total = 10\nprint('total set')")], ["Use it in a new run", () => runIn("py", "total * 3")]]],
+  ["Stop clears the Kernel", "Start a run that never ends, press Stop, then try to use the old variable. Expect a NameError: Stop restarted the Kernel (ADR 0003).",
+    [["Make a variable", () => runIn("py", "total = 10")], ["Start an endless run", () => runIn("py", "while True: pass")], ["Press Stop", () => stopKernel("py")], ["Use the old variable", () => runIn("py", "total")]]],
+  ["Code can't reach the internet", "Both Kernels try to contact example.com. Both should fail: no Dangerous permissions were granted.",
+    [["From JavaScript", () => runIn("js", "await fetch('https://example.com/', { mode: 'no-cors' })\n'reached'")], ["From Python", () => runIn("py", "from js import fetch\nawait fetch('https://example.com/', mode='no-cors')")]]],
+  ["Code can't read the reader's notes", "The JavaScript Kernel looks for zreader's saved data. It runs in a separate, empty origin, so nothing is there.",
+    [["Look for saved notes", () => runIn("js", "typeof localStorage")], ["Look for saved images", () => runIn("js", "(await indexedDB.databases?.())?.length ?? 'no list'")]]],
+];
+const tabs = document.getElementById("tabs"), walk = document.getElementById("walk");
+WALKS.forEach(([title, text, steps], i) => {
+  const b = Object.assign(document.createElement("button"), { textContent: title });
+  b.onclick = async () => {
+    tabs.querySelectorAll("button").forEach((x) => x.setAttribute("aria-selected", x === b));
+    await hostReady; host.restart("py"); host.restart("js"); // known initial state
+    for (const id of Object.keys(ui)) { ui[id].status = "not started"; ui[id].el.querySelector("[data-o]").textContent = ""; render(id); }
+    walk.innerHTML = `<p>${text}</p><div class="row"></div>`;
+    let next = 0;
+    steps.forEach(([label, act], j) => {
+      const sb = Object.assign(document.createElement("button"), { textContent: `${j + 1}. ${label}`, disabled: j !== 0 });
+      sb.onclick = () => { if (j !== next) return; next++; walk.querySelectorAll(".row button").forEach((x, k) => (x.disabled = k !== next)); act(); };
+      walk.querySelector(".row").append(sb);
+    });
+  };
+  tabs.append(b);
+  if (i === 0) b.setAttribute("aria-selected", "true");
+});
+</script>
+</body>
+</html>
