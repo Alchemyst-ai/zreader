@@ -37,6 +37,8 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | [API reference](./api-reference.md) | Every entry point and its exports |
 | [Troubleshooting](./troubleshooting.md) | Common errors and how to fix them |
 | [Production checklist](./production-checklist.md) | What to check before shipping, and when upgrading to 0.4 |
+| [Glossary](../GLOSSARY.md) | The domain terms used across code, docs and issues |
+| [Architecture decision records](./adr/) | One file per hard-to-reverse decision, with the trade-off behind it |
 
 ## Entry points at a glance
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Node as TiptapNode, mergeAttributes, nodeInputRule } from "@tiptap/core";
@@ -20,25 +20,14 @@ import {
   ListOrderedIcon,
   QuoteIcon,
   Redo2Icon,
-  SigmaIcon,
   SquareCodeIcon,
   StrikethroughIcon,
   Undo2Icon,
 } from "lucide-react";
-import { parseBlobUrl, type BlobStore, type Pad, type PadScope } from "zreader";
+import { parseBlobUrl, type BlobStore, type PadScope } from "zreader";
 import { useAddImage, useBlobStore, useMathLoader, useReader, usePad, imageFiles } from "zreader/react";
-import { jsonHasMath, markdownHasMath, mathExtensions } from "./math";
-
-/**
- * What to load into the editor. The cached JSON is lossless, but it was made
- * with or without math nodes: when that doesn't match the current setting,
- * load the Markdown (the stored format) instead.
- */
-function contentFor(pad: Pad, math: boolean): { content: unknown; contentType: "json" | "markdown" } {
-  const json = pad.json;
-  const usable = json !== undefined && (jsonHasMath(json) ? math : !(math && markdownHasMath(pad.markdown)));
-  return usable ? { content: json, contentType: "json" } : { content: pad.markdown, contentType: "markdown" };
-}
+import { resolvePadFeatures, type ResolvedPadFeatures } from "./features";
+import { PAD_FEATURES } from "./pad-features";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
@@ -149,7 +138,7 @@ function readerImage(blobs: BlobStore) {
   });
 }
 
-function Toolbar({ editor, onImage, math }: { editor: Editor; onImage?: () => void; math?: boolean }) {
+function Toolbar({ editor, onImage, features }: { editor: Editor; onImage?: () => void; features: ResolvedPadFeatures["toolbar"] }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -210,26 +199,9 @@ function Toolbar({ editor, onImage, math }: { editor: Editor; onImage?: () => vo
       <Mark label="Code block" pressed={s.codeBlock} onPressed={() => c().toggleCodeBlock().run()}>
         <SquareCodeIcon />
       </Mark>
-      {math && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Insert formula"
-              onClick={() => {
-                const { from, to, empty } = editor.state.selection;
-                const tex = empty ? "" : editor.state.doc.textBetween(from, to, " ");
-                c().insertContent({ type: "inlineMath", attrs: { tex } }).run();
-              }}
-            >
-              <SigmaIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Insert formula ($…$)</TooltipContent>
-        </Tooltip>
-      )}
+      {features.map((f) => (
+        <Fragment key={f.name}>{f.render(editor)}</Fragment>
+      ))}
       {onImage && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -327,7 +299,8 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
   };
 
   const mathLoader = useMathLoader();
-  const initial = contentFor(pad, mathLoader != null);
+  const features = useMemo(() => resolvePadFeatures({ mathLoader }, PAD_FEATURES), [mathLoader]);
+  const initial = features.contentFor(pad);
   const editor = useEditor({
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
@@ -338,7 +311,7 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder }),
       readerImage(blobs),
-      ...(mathLoader ? mathExtensions(mathLoader) : []),
+      ...features.extensions,
       // Its own marked instance: Markdown tokenizers (math) must not leak into other editors on the page.
       Markdown.configure({ marked: new Marked() as never }),
     ],
@@ -380,7 +353,7 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
         store.savePad(scope, md, e.getJSON());
       }, 300);
     },
-  }, [mathLoader]);
+  }, [features]);
 
   const editorRef = useRef<Editor | null>(null);
   editorRef.current = editor;
@@ -401,16 +374,16 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
     if (!editor || editor.isDestroyed) return;
     if (pad.markdown === lastWritten.current) return;
     if (pad.json === undefined || !editor.isFocused) {
-      const next = contentFor(pad, mathLoader != null);
+      const next = features.contentFor(pad);
       editor.commands.setContent(next.content as never, { contentType: next.contentType, emitUpdate: false });
       lastWritten.current = pad.markdown;
     }
-  }, [editor, pad, mathLoader]);
+  }, [editor, pad, features]);
 
   if (!editor) return null;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      <Toolbar editor={editor} math={mathLoader != null} onImage={images.enabled ? () => fileRef.current?.click() : undefined} />
+      <Toolbar editor={editor} features={features.toolbar} onImage={images.enabled ? () => fileRef.current?.click() : undefined} />
       <EditorContent editor={editor} className="zr-editor min-h-0 flex-1 overflow-y-auto overscroll-contain" />
       {images.enabled && (
         <input
