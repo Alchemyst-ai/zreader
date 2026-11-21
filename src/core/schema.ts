@@ -102,6 +102,7 @@ export function isHighlight(x: unknown): x is Highlight {
     isAnchor(x.anchor) &&
     str(x.color) &&
     optStr(x.note) &&
+    optStr(x.text) &&
     str(x.createdAt) &&
     str(x.updatedAt)
   );

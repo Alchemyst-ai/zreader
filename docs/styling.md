@@ -47,6 +47,10 @@ Tokens: `--zr-background`, `--zr-foreground`, `--zr-card`, `--zr-card-foreground
 
 Text size, line spacing, line width and font are Tailwind classes on the article, from exported maps you can reuse: `TEXT_SIZE_CLASS` (`prose-sm` … `prose-2xl`), `LEADING_CLASS`, `MEASURE_CLASS` (`max-w-[58ch]`, `[68ch]`, `[82ch]`) and `FONT_CLASS` (`font-serif`, `font-sans`, `font-mono`). Chapter content is styled with Tailwind Typography (`PROSE_CLASS`).
 
+## Math
+
+Chapter formulas use `--zr-math-font` (falling back to Latin Modern Math, STIX Two Math, Cambria Math, then the browser's `math` font). In the scratchpad, two more variables apply, set on `.zr-editor`: `--zr-math-scale` (a size multiplier, default `1`) and `--zr-math-x-height` (the `font-size-adjust` value that matches the math font's letter height to the text, default `0.5`; `none` turns it off). See [Math → In the scratchpad](./math.md#in-the-scratchpad).
+
 ## Hooks for your CSS
 
 | Selector | Element |

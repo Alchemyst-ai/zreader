@@ -11,7 +11,7 @@ import {
   type Envelope,
   type RecordType,
 } from "./schema";
-import type { ReaderStore } from "./store";
+import { highlightText, type ReaderStore } from "./store";
 import { base64ToBlob, blobToBase64, collectGarbage, findBlobRefs, referencedBlobs, type BlobStore } from "./blob-store";
 import type { Bookmark, BookProgress, Highlight, Pad, ReaderSettings } from "./types";
 
@@ -266,7 +266,7 @@ export function highlightsToMarkdown(
   for (const [chapterId, list] of byChapter) {
     out.push(`## ${chapterTitle(chapterId)}`, "");
     for (const h of [...list].sort((a, b) => a.anchor.start - b.anchor.start)) {
-      out.push(...h.anchor.exact.trim().split(/\r?\n/).map((l) => `> ${l}`));
+      out.push(...highlightText(h).trim().split(/\r?\n/).map((l) => `> ${l}`));
       if (h.note) out.push("", h.note);
       out.push("");
     }

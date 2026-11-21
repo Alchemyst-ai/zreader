@@ -46,6 +46,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | `zreader` | Anywhere | Core: storage store, anchoring, block ids, backup |
 | `zreader/rehype` | Build time | `rehypeBlocks` for your own MDX/Markdown pipeline |
 | `zreader/sw` | Anywhere | The offline-reading service worker script |
+| `zreader/math/katex`, `zreader/math/temml` | Browser | Math in the scratchpad |
 | `zreader/content` | Node | Content layer for `content/books/**` |
 | `zreader/config` | Node | `defineConfig`, `glob`, `z` for `reader.config.ts` |
 | `zreader/next` | Node (`next.config`) | `withReader()` |

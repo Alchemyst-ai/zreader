@@ -67,11 +67,16 @@ Invalid TeX never fails the build. With KaTeX and Temml the TeX source stays on 
 
 MathJax loads these TeX packages: `base`, `ams`, `newcommand`, `configmacros`, `noundefined`, `boldsymbol`, `braket`, `cancel`, `cases`, `color` and `mathtools`.
 
+## Writing tips
+
+- `\sum_{n=1}^{\infty}` is the summation sign: in display math it's drawn large with its limits above and below. `\Sigma` is the Greek letter and stays letter-sized.
+- In chapters, inline fractions are compact, as in TeX. Use `\dfrac{1}{n^2}` or `$$…$$` for a full-size one.
+
 ## In the reader
 
 - **Display math** is placed in `<figure data-zr-math="display">`, centred, and scrolls sideways when it's wider than the page.
 - **Bookmarks and progress:** each display formula is its own block, so you can bookmark it and resume reading at it.
-- **Highlights** can cover math, like any other text. The quote holds the rendered characters, not the TeX source: the TeX annotation is marked `data-zr-ignore` and stays out of the highlight text.
+- **Highlights** can cover math, like any other text. Anchoring uses the rendered characters (the TeX annotation is marked `data-zr-ignore`), but what readers see and take away keeps the TeX: a highlight over $E = mc^2$ is listed, copied, exported and quoted to the scratchpad as `$E=mc^2$`, and display math as a `$$` block. A selection that ends inside a formula takes the whole formula. The Markdown is stored on the highlight as `text`; `highlightText(h)` returns it (or `anchor.exact` when the passage has no math).
 - **Fonts:** math uses the `--zr-math-font` CSS variable, falling back to `Latin Modern Math`, `STIX Two Math`, `Cambria Math` and then the browser's `math` font. To use a particular font, load it yourself and set the variable:
 
   ```css
@@ -79,6 +84,50 @@ MathJax loads these TeX packages: `base`, `ams`, `newcommand`, `configmacros`, `
   ```
 
   Temml publishes `Temml.woff2` and Latin Modern fonts you can serve for this.
+
+## In the scratchpad
+
+Chapter math is rendered on the server; the scratchpad runs in the browser, so it needs an engine in the page. Turn it on with KaTeX or Temml (the same package you use for `content.math`):
+
+```tsx
+// Next.js: app/books/layout.tsx
+import { ScratchpadMath } from "zreader/math/katex"; // or "zreader/math/temml"
+
+<ReaderRoot>
+  <ScratchpadMath macros={{ "\\RR": "\\mathbb{R}" }} />
+  {children}
+</ReaderRoot>
+```
+
+```tsx
+// Plain React
+import { loadMath } from "zreader/math/katex";
+
+<ReaderProvider books={books} math={loadMath}>…</ReaderProvider>
+```
+
+The engine is loaded the first time a pad shows a formula, so readers who never use math in the pad don't download it (KaTeX is about 78 KB gzipped, Temml less). For a site that renders chapters with MathJax, use Temml in the pad: MathJax is too large to send to every reader. Formulas can then look slightly different in the pad.
+
+With it on:
+
+- `$…$` and `$$…$$` in a pad render as formulas, including math quoted from a chapter (inside the quote, too).
+- Type `$x^2$` for an inline formula, or `$$` and a space on an empty line for a display one. The **Σ** button inserts a formula (from the selected text, if any).
+- Click a formula, or select it and press Enter, to edit its TeX. Enter (Ctrl/⌘+Enter for display math) saves, Escape cancels, and an empty formula is removed.
+- Pads are still stored as Markdown with `$…$`, so downloads and backups are unchanged.
+- A dollar sign followed by a space, or a closing one followed by a digit, isn't math: `$5 or $6` stays text.
+- **Size:** inline formulas are typeset in display style, so fractions, limits and sums are full size next to the pad's small text: `$\frac{1}{n^2}$` reads like `$$…$$`, only inline. Lines with fractions get a little taller. Only the rendering changes; the TeX you wrote is what's stored and edited. Pass `<ScratchpadMath inlineStyle="text" />` (or `createMathLoader(macros, { inlineStyle: "text" })`) for standard TeX inline sizing.
+- **Letter height:** math fonts have short lowercase letters for their size, so a formula can look a size smaller than the words around it. In the pad, `font-size-adjust` scales the math font to match. Tune it with CSS variables on `.zr-editor`:
+
+  ```css
+  .zr-editor {
+    --zr-math-scale: 1.1;      /* every pad formula 10% larger */
+    --zr-math-x-height: none;  /* turn off the letter-height matching */
+  }
+  ```
+
+  Chapters keep their own sizing (`1.05em`), so these variables don't change chapter math.
+
+Without it, the pad shows `$…$` as plain text, as before. `useRegisterMath(loader)` and `useMathLoader()` from `zreader/react` let you register your own renderer (`(tex, display) => MathML`).
 
 ## In the `.md` twin
 

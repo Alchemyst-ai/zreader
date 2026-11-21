@@ -103,6 +103,16 @@ describe("offline service worker", () => {
     expect(await unsaved.text()).toContain("wasn't saved for offline reading");
   });
 
+  it("serves framework files fresh when online, so a deploy never runs old code", async () => {
+    const net = { ...network, "/_next/static/chunks/app.js": { body: "1", type: "text/javascript" } };
+    const sw = harness(net);
+    await sw.message({ type: "zr:save", key: "k", urls: ["/books/guide/intro"] });
+    net["/_next/static/chunks/app.js"] = { body: "2", type: "text/javascript" }; // same name, new code
+    expect(await (await sw.request("https://x.dev/_next/static/chunks/app.js", "no-cors"))!.text()).toBe("2");
+    sw.setOnline(false);
+    expect(await (await sw.request("https://x.dev/_next/static/chunks/app.js", "no-cors"))!.text()).toBe("2");
+  });
+
   it("leaves other requests alone and removes only files no other book uses", async () => {
     const sw = harness(network);
     expect(await sw.request("https://cdn.other/x.png", "no-cors")).toBeNull();

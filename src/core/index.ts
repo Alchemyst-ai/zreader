@@ -6,6 +6,7 @@ export * from "./text";
 export * from "./dom";
 export * from "./blocks";
 export * from "./blob-store";
+export * from "./math";
 export { DEFAULT_CLIENT_OPTIONS } from "./defaults";
 export {
   MIGRATIONS,

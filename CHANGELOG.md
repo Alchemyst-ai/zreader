@@ -17,6 +17,8 @@
 
 **Math.** `content.math: "katex" | "temml" | "mathjax"` renders TeX as MathML with the engine you install (an optional peer dependency). It handles `$…$`, `$$…$$` and ```` ```math ```` in Markdown and MDX, and `\(…\)`, `\[…\]` and `$$…$$` in HTML. Display math is its own block. In MDX, braces inside `$…$` are no longer evaluated as JavaScript. MathML you write yourself is kept while math is on. `.md` twins keep the TeX. See [Math](./docs/math.md).
 
+**Math in quotes and the scratchpad.** Highlights over math keep the TeX: the Highlights list, Copy, the highlights export and Quote to scratchpad show `$E=mc^2$` instead of the rendered characters (stored as the new optional `Highlight.text`). Render `<ScratchpadMath />` from the new `zreader/math/katex` or `zreader/math/temml` entries (or pass `<ReaderProvider math>`) and the scratchpad renders `$…$` and `$$…$$`, with click-to-edit, `$x$` and `$$ ` shortcuts and a Σ button. The engine loads only when a pad shows a formula. Inline pad formulas are typeset in display style (`inlineStyle="text"` opts out) and the pad matches the math font's letter height to the text (`--zr-math-x-height`, `--zr-math-scale`), so fractions and sums aren't dwarfed by the text around them; chapter math sizing is unchanged. Each scratchpad editor now has its own Markdown parser, so its extensions never affect other Tiptap editors on the page.
+
 **Reader images.** Readers can paste, drop or insert images into the scratchpad and into highlight notes. The images are stored in IndexedDB as `zr-blob:<id>`, with per-image limits (`reader.userImages`), usage shown in settings, and **Remove unused images**. Backups embed the images (format v2); a backup without images is still written as v1.
 
 **Offline reading (opt-in).** With `reader.offline.enabled`, book pages get **Save for offline**, backed by the service worker from the new `zreader/sw` entry (`serviceWorkerRoute()` in `zreader/next/server`). See [Offline reading](./docs/reader-features.md#offline-reading).
@@ -37,8 +39,9 @@ See also the [production checklist](./docs/production-checklist.md).
 | MDX `.md` twins parse `$…$` as math, so braces between dollar signs are kept, not removed | None |
 | `ReaderClientOptions` gains `userImages` and `offline` | Only affects code that builds the object by hand; `mergeOptions` and `resolveConfig` fill the defaults |
 | `BACKUP_VERSION` is `2` | v1 backups still import |
+| `SelectionState.text` (from `useChapterEngine`) writes formulas as `$TeX$` | Use `index.text.slice(start, end)` for the rendered characters |
 
-New dependencies: `image-size`, `remark-math`, `hast-util-to-jsx-runtime`, `unist-util-visit-parents`. New optional peers: `katex`, `temml` and `@mathjax/src`.
+New dependencies: `image-size`, `remark-math`, `hast-util-to-jsx-runtime`, `unist-util-visit-parents`, `marked` (the same major as `@tiptap/markdown` uses). New optional peers: `katex`, `temml` and `@mathjax/src`.
 
 ## 0.3.0
 

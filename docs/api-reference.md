@@ -29,6 +29,7 @@ Browser. The reader UI. See [React](./react.md).
 
 - `useSettings()`, `useHighlights(bookId, chapterId?)`, `useBookmarks(bookId)`, `useProgress(bookId)`, `usePad(scope)`
 - `useBlobStore()`, `useBlobUrl(src)`, `useBlobUsage()`, `useAddImage()`
+- `useMathLoader()`, `useRegisterMath(loader)`
 - `useHydrated()`, `useMediaQuery(query, serverValue?)`, `useIsDesktop()`
 - `useChapterEngine(options)` (`ChapterEngine`, `ChapterEngineOptions`, `SelectionState`), `useValueStore(store)`
 
@@ -165,6 +166,16 @@ Browser. Lazy-loaded by the scratchpad; import it directly only for a custom edi
 
 Needs the Tiptap peer dependencies.
 
+## `zreader/math/katex`, `zreader/math/temml`
+
+Browser. Math in the scratchpad. See [Math → In the scratchpad](./math.md#in-the-scratchpad).
+
+- `ScratchpadMath` (`ScratchpadMathProps`: `macros`, `inlineStyle`): render inside the provider to turn it on
+- `loadMath`, `createMathLoader(macros?, { inlineStyle? })`: a `MathLoader` for `<ReaderProvider math>`
+- `withInlineStyle(renderer, inlineStyle?)`: applies the pad's inline display style to any renderer (`PadMathOptions`)
+
+Each needs its engine installed (`katex` or `temml`).
+
 ## `zreader/sw`
 
 Anywhere (the script is a string). See [Offline reading](./reader-features.md#offline-reading).
@@ -207,6 +218,8 @@ The store's methods:
 - `exportBackupWithImages(store, blobs, opts?)`, `importBackupWithImages(store, blobs, input, opts?)` (`ImportWithImagesResult`), `importBackupImages(blobs, input)` (`BackupBlob`)
 - Reader images: `createBlobStore(prefix)`, `createIndexedDbBlobStore(prefix, idb?)`, `createMemoryBlobStore()`, `referencedBlobs(store)`, `collectGarbage(blobs, referenced, opts?)`, `blobUrl(id)`, `parseBlobUrl(src)`, `findBlobRefs(text)`, `dataUriToBlob(uri)`, `blobToBase64(blob)`, `base64ToBlob(data, type)`, `formatStorageBytes(n)`, `BLOB_SCHEME`, `BlobTooLargeError` (`BlobStore`, `BlobInfo`, `StoredBlob`, `BlobUsage`, `CollectGarbageOptions`)
 - Block helpers: `blockText(el)`, `imageKey(alt, src)`, `mediaBlockText(keys)`
+- `spanToText(index, span)`: a span's text with formulas as `$TeX$`; `highlightText(h)`: a highlight's passage for display and quotes
+- Browser math: `loadMathRenderer(loader)` (`MathRenderer`, `MathLoader`)
 - `BackupFormatError`, `BACKUP_FORMAT`, `BACKUP_VERSION`, `LEGACY_BACKUP_FORMATS`, `recordTypeForKey(key)`
 - `highlightToMarkdown(h, href?)`, `quoteToMarkdown(text, opts?)`, `highlightsToMarkdown(bookTitle, highlights, chapterTitle?)`
 

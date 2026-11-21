@@ -25,6 +25,7 @@ Go through this before you ship a zreader site, and again when you upgrade to 0.
 - [ ] **Install the engine** you set in `content.math` (`katex`, `temml` or `@mathjax/src`). If it's missing, compiling a chapter with math fails with `npm i <engine>`. See [Math](./math.md).
 - [ ] **Check display math delimiters.** `$$` must be on its own lines for display math; `$$x$$` inside a sentence renders inline.
 - [ ] **Search the build log for `could not render math`.** Invalid TeX never fails the build; it stays on the page in red.
+- [ ] **Scratchpad math (optional):** render `<ScratchpadMath />` from `zreader/math/katex` or `zreader/math/temml` inside `<ReaderRoot>`, with the same `macros` as `content.math`. Sites using MathJax for chapters should use Temml here. Then quote a formula to the pad and type `$x^2$` in it.
 - [ ] **Check fonts.** Math uses the browser's MathML font unless you load one and set `--zr-math-font`. Look at a formula-heavy chapter in Chrome, Firefox and Safari.
 
 ## Reader images and backups
@@ -37,6 +38,7 @@ Go through this before you ship a zreader site, and again when you upgrade to 0.
 
 - [ ] **Serve the worker from the site root** at `reader.offline.serviceWorker` (default `/zreader-sw.js`), for example with `serviceWorkerRoute()` at `app/zreader-sw.js/route.ts`. It must be served over HTTPS (or `localhost`). See [Offline reading](./reader-features.md#offline-reading).
 - [ ] **Test it offline.** Save a book, switch the browser to offline in dev tools, and open the book page and a chapter. Unsaved pages should show the offline notice.
+- [ ] **Deploy once with a saved book.** Save a book, deploy a change, and reload it online: you should get the new version (pages and `/_next/` files are network first).
 - [ ] **Plan for resets.** Change `cacheName` in `serviceWorkerScript({ cacheName })` to drop every saved book (for example after a breaking change to page markup).
 
 ## Agents
@@ -52,4 +54,6 @@ The automated tests use simulated browser APIs for these, so check them by hand 
 - [ ] Pasting and dropping images into the scratchpad and into notes, in Chrome, Firefox and Safari (including iOS).
 - [ ] Book covers on the shelf and contents page, through `next/image` under Next.js.
 - [ ] Offline saving and reading, if enabled.
-- [ ] Highlights over math and over figure captions.
+- [ ] Highlights over math and over figure captions: the Highlights list, Copy and Quote to scratchpad should show `$TeX$`.
+- [ ] Formula size in the scratchpad, in the desktop panel and the mobile drawer: an inline `$\frac{1}{n^2}$` should read at the size of the surrounding text. Adjust with `--zr-math-scale` on `.zr-editor` if your pad font differs a lot.
+- [ ] Formulas in the scratchpad: typing `$…$` and `$$ `, the Σ button, click to edit, Escape to cancel.

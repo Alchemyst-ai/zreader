@@ -98,6 +98,37 @@ export function buildTextIndex(root: Element): TextIndex {
   return { root, text, entries };
 }
 
+function texOf(math: Element): string | null {
+  const ann = math.querySelector('annotation[encoding="application/x-tex"]');
+  const tex = ann?.textContent?.trim();
+  return tex || null;
+}
+
+/**
+ * The text of `span` as Markdown-friendly text: like `index.text`, except that
+ * a formula touched by the span is written once, whole, as `$TeX$` (or a
+ * `$$` block for display math), from its TeX annotation. Formulas without one
+ * keep their rendered text.
+ */
+export function spanToText(index: TextIndex, span: TextSpan): string {
+  let out = "";
+  let lastMath: Element | null = null;
+  for (const e of index.entries) {
+    if (e.end <= span.start || e.start >= span.end) continue;
+    const math = e.node.parentElement?.closest("math") ?? null;
+    const tex = math ? texOf(math) : null;
+    if (math && tex != null) {
+      if (math === lastMath) continue;
+      lastMath = math;
+      out += math.getAttribute("display") === "block" ? `\n$$\n${tex}\n$$\n` : `$${tex}$`;
+      continue;
+    }
+    lastMath = null;
+    out += e.node.data.slice(Math.max(0, span.start - e.start), Math.min(e.node.data.length, span.end - e.start));
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Text offset of a DOM boundary point. */
 export function pointToOffset(index: TextIndex, container: Node, offset: number): number {
   if (container.nodeType === 3) {

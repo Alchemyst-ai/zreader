@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), "../dist");
-const entries = ["react/index.js", "editor/index.js", "agent/react/index.js", "rehype/index.js", "core/index.js"];
+const entries = ["react/index.js", "editor/index.js", "agent/react/index.js", "rehype/index.js", "core/index.js", "math/katex.js", "math/temml.js"];
 const FORBIDDEN = /from\s*['"](next(?:\/[^'"]*)?|node:[^'"]+|fs|fs\/promises|path|crypto|os|url)['"]/g;
 const seen = new Set();
 const problems = [];

@@ -26,6 +26,11 @@ export interface Highlight {
   anchor: Anchor;
   color: string;
   note?: string;
+  /**
+   * The passage as Markdown when it differs from `anchor.exact`: formulas as
+   * `$TeX$` (`anchor.exact` holds the rendered characters, which anchoring needs).
+   */
+  text?: string;
   createdAt: ISODate;
   updatedAt: ISODate;
 }

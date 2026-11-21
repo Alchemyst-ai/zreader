@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   highlightToMarkdown,
+  highlightText,
   quoteToMarkdown,
   supportsHighlightApi,
   BLOCK_ATTR,
@@ -555,7 +556,7 @@ export function Reader({
           });
         }}
         onQuote={padEnabled && openHighlight ? () => quoteToPad(highlightToMarkdown(openHighlight, href(chapter.id, `hl-${openHighlight.id}`))) : undefined}
-        onCopy={openHighlight ? () => void copy(openHighlight.anchor.exact) : undefined}
+        onCopy={openHighlight ? () => void copy(highlightText(openHighlight)) : undefined}
         onClose={() => {
           setOpenHighlightId(null);
           setFocusNote(false);

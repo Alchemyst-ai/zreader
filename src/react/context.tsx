@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -15,6 +16,7 @@ import {
   createBlobStore,
   parseBlobUrl,
   type BlobStore,
+  type MathLoader,
   type BlobUsage,
   type Cell,
   type ReaderStore,
@@ -76,6 +78,9 @@ interface ReaderContextValue {
   store: ReaderStore;
   /** Images readers add (IndexedDB). */
   blobs: BlobStore;
+  /** Renders TeX in the scratchpad, when the app provides an engine. */
+  math: MathLoader | null;
+  setMath: (loader: MathLoader | null) => void;
   options: ReaderClientOptions;
   library: Library;
 }
@@ -96,6 +101,11 @@ export interface ReaderProviderProps {
   onStorageError?: (error: unknown) => void;
   /** Where reader-added images are kept. Defaults to IndexedDB (`<storagePrefix>:blobs`). */
   blobStore?: BlobStore;
+  /**
+   * Math in the scratchpad: a loader for a TeX → MathML renderer, such as
+   * `loadMath` from `zreader/math/katex`. Or render `<ScratchpadMath />` inside the provider.
+   */
+  math?: MathLoader;
   /**
    * Manage the colour theme with next-themes (class on <html>, no-flash script).
    * Set to `false` if your app already renders a next-themes <ThemeProvider>.
@@ -135,6 +145,7 @@ export function ReaderProvider({
   store: external,
   onStorageError,
   blobStore,
+  math: mathProp,
   manageTheme = true,
   toaster = true,
   books,
@@ -158,6 +169,9 @@ export function ReaderProvider({
   );
   useEffect(() => store.connect(), [store]);
   const [blobs] = useState<BlobStore>(() => blobStore ?? createBlobStore(resolved.storagePrefix));
+  const [registered, setMath] = useState<MathLoader | null>(null);
+  const math = mathProp ?? registered;
+  const setMathLoader = useCallback((l: MathLoader | null) => setMath(() => l), []);
   const library = useMemo<Library>(() => {
     const list = books ?? [];
     const byId = new Map(list.map((b) => [b.id, b]));
@@ -171,7 +185,10 @@ export function ReaderProvider({
       readerActions,
     };
   }, [books, Link, Image, hrefFor, headerSlot, readerActions, resolved.basePath]);
-  const value = useMemo(() => ({ store, blobs, options: resolved, library }), [store, blobs, resolved, library]);
+  const value = useMemo(
+    () => ({ store, blobs, math, setMath: setMathLoader, options: resolved, library }),
+    [store, blobs, math, setMathLoader, resolved, library],
+  );
 
   // §10.3: outside its basePath every `hrefFor` link is wrong (a renamed
   // basePath without a renamed app/ folder). Development only, once per process.
@@ -246,6 +263,20 @@ export function useBook(book: BookMeta | string): BookMeta {
 
 export function useReaderStore(): ReaderStore {
   return useReader().store;
+}
+
+/** The scratchpad's math loader, or `null` when the app provides none. */
+export function useMathLoader(): MathLoader | null {
+  return useReader().math;
+}
+
+/** Turn on math in the scratchpad with `loader` while the calling component is mounted. */
+export function useRegisterMath(loader: MathLoader) {
+  const { setMath } = useReader();
+  useEffect(() => {
+    setMath(loader);
+    return () => setMath(null);
+  }, [setMath, loader]);
 }
 
 export function useBlobStore(): BlobStore {

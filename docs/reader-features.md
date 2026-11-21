@@ -37,6 +37,7 @@ Elements with `data-zr-ignore` (such as `<Callout>`) are excluded from highlight
 A WYSIWYG Markdown editor (Tiptap) with checklists (`- [ ]`).
 
 - Three scopes, switchable in the panel: **Chapter**, **Book** and **Global**. Configure which are offered with `scratchpad.scopes`, or turn it off with `scratchpad.enabled: false`.
+- **Math:** with [`<ScratchpadMath />`](./math.md#in-the-scratchpad), `$…$` and `$$…$$` render as formulas you can click to edit, and math quoted from a chapter arrives as TeX.
 - **Images:** paste, drop or insert (toolbar) images. They're stored in this browser and saved in the pad's Markdown as `![name](zr-blob:<id>)`. Base64 images pasted as HTML are moved to the same store, so the pad stays small.
 - **Quote to scratchpad** appends the passage (and its note) as a Markdown quote with a link back to the highlight.
 - Panel menu: **Download .md**, **Copy markdown**, **Clear** (with Undo).
@@ -93,7 +94,7 @@ To turn it on:
 
    Anywhere else, serve `serviceWorkerScript()` from `zreader/sw` with the `SW_HEADERS` headers.
 
-The worker is registered with the shelf's `basePath` as its scope, so it only controls reader pages. It answers two kinds of request: page loads under that scope (network first), and saved files under `/_next/static/`, `/_next/image` and `/_assets/` (cache first). It never caches anything on its own; only **Save for offline** adds files.
+The worker is registered with the shelf's `basePath` as its scope, so it only controls reader pages. It answers two kinds of request: page loads under that scope, and saved files. Pages and `/_next/static/` and `/_next/image` files are network first, so a new deploy never runs old code next to new pages; the saved copy answers when offline, and is refreshed when online. Only zreader's `/_assets/` URLs, which change whenever the file does, are cache first. It never caches anything on its own; only **Save for offline** adds files.
 
 Offline, highlights, notes and the scratchpad keep working, because they're stored in the browser anyway. Client-side navigation between chapters falls back to full page loads, which come from the saved copy. Changing `cacheName` in `serviceWorkerScript({ cacheName })` drops every saved book.
 

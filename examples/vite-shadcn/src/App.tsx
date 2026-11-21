@@ -1,5 +1,6 @@
 import { Link as RouterLink, Route, Routes, useParams } from "react-router";
 import { BookOpenIcon } from "lucide-react";
+import { loadMath } from "zreader/math/katex";
 import { BookContents, BookShelf, Callout, Reader, ReaderProvider, ZImage, type LinkComponent } from "zreader/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,7 +65,7 @@ function NotFound() {
 
 export function App() {
   return (
-    <ReaderProvider books={books} Link={Link} options={{ basePath: "/books" }}>
+    <ReaderProvider books={books} Link={Link} options={{ basePath: "/books" }} math={loadMath}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/books" element={<BookShelf />} />

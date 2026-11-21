@@ -63,6 +63,8 @@ export default defineConfig([
       "editor/index": "src/editor/index.tsx",
       "next/client/index": "src/next/client/index.tsx",
       "agent/react/index": "src/agent/react/index.ts",
+      "math/katex": "src/math/katex.tsx",
+      "math/temml": "src/math/temml.tsx",
     },
     // Unsplit so every client entry file can carry the directive (see scripts/use-client.mjs).
     splitting: false,

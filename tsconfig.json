@@ -54,6 +54,12 @@
       "zreader/rehype": [
         "./src/rehype/index.ts"
       ],
+      "zreader/math/katex": [
+        "./src/math/katex.tsx"
+      ],
+      "zreader/math/temml": [
+        "./src/math/temml.tsx"
+      ],
       "zreader/sw": [
         "./src/sw/index.ts"
       ],

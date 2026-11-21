@@ -195,3 +195,59 @@
   outline: 2px solid var(--zr-ring, currentColor);
   outline-offset: 2px;
 }
+
+/* ------------------------------------------------- math in the scratchpad */
+.zr-editor .zr-pad-math {
+  cursor: pointer;
+  border-radius: 0.25rem;
+}
+/* Pad only: math fonts have short lowercase letters for their size, which looks
+   tiny next to the pad's sans text. font-size-adjust scales the math font so its
+   x-height matches; --zr-math-x-height: none turns that off, --zr-math-scale
+   scales every pad formula. (.zr-editor also matches the mobile drawer.) */
+.zr-editor math {
+  font-family: var(--zr-math-font, "Latin Modern Math", "STIX Two Math", "Cambria Math", math);
+  font-size: calc(1em * var(--zr-math-scale, 1));
+  font-size-adjust: var(--zr-math-x-height, 0.5);
+}
+@supports not (font-size-adjust: 0.5) {
+  .zr-editor math {
+    font-size: calc(1.15em * var(--zr-math-scale, 1));
+  }
+}
+.zr-editor .zr-pad-math:hover {
+  background: color-mix(in oklab, currentColor 6%, transparent);
+}
+.zr-editor .zr-pad-math[data-display="block"] {
+  display: block;
+  margin-block: 0.5rem;
+  overflow-x: auto;
+  text-align: center;
+}
+.zr-editor .zr-pad-math[data-state="loading"],
+.zr-editor .zr-pad-math[data-state="error"] {
+  font-family: var(--zr-font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+.zr-editor .zr-pad-math[data-state="error"] {
+  color: var(--zr-destructive, #b91c1c);
+}
+.zr-editor .zr-pad-math.ProseMirror-selectednode {
+  outline: 2px solid var(--zr-ring, currentColor);
+  outline-offset: 1px;
+}
+.zr-editor .zr-pad-math-input {
+  font-family: var(--zr-font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+  min-width: 6ch;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--zr-border, currentColor);
+  border-radius: 0.25rem;
+  background: var(--zr-background, transparent);
+  color: inherit;
+}
+.zr-editor textarea.zr-pad-math-input {
+  display: block;
+  width: 100%;
+  resize: vertical;
+}

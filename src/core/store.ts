@@ -210,7 +210,7 @@ export function createReaderStore(opts: ReaderStoreOptions = {}) {
       settings().set({ ...defaultSettings, updatedAt: now() });
     },
 
-    addHighlight(input: { bookId: string; chapterId: string; anchor: Anchor; color?: string; note?: string }): Highlight {
+    addHighlight(input: { bookId: string; chapterId: string; anchor: Anchor; color?: string; note?: string; text?: string }): Highlight {
       const t = now();
       const h: Highlight = {
         id: newId(),
@@ -219,13 +219,14 @@ export function createReaderStore(opts: ReaderStoreOptions = {}) {
         anchor: input.anchor,
         color: input.color ?? options.defaultHighlightColor,
         ...(input.note ? { note: input.note } : {}),
+        ...(input.text && input.text !== input.anchor.exact ? { text: input.text } : {}),
         createdAt: t,
         updatedAt: t,
       };
       highlights(input.bookId).set((list) => [...list, h]);
       return h;
     },
-    updateHighlight(bookId: string, id: string, patch: Partial<Pick<Highlight, "color" | "note" | "anchor">>) {
+    updateHighlight(bookId: string, id: string, patch: Partial<Pick<Highlight, "color" | "note" | "anchor" | "text">>) {
       highlights(bookId).set((list) =>
         list.map((h) => {
           if (h.id !== id) return h;
@@ -347,7 +348,12 @@ export function quoteToMarkdown(text: string, opts: { href?: string; note?: stri
   return `${quote}${link}${note}`;
 }
 
+/** A highlight's passage for people and the scratchpad: Markdown with math as `$TeX$` when it has math. */
+export function highlightText(h: Pick<Highlight, "anchor" | "text">): string {
+  return h.text ?? h.anchor.exact;
+}
+
 /** Markdown snippet used when sending a highlight to the scratchpad. */
-export function highlightToMarkdown(h: Pick<Highlight, "anchor" | "note">, href?: string): string {
-  return quoteToMarkdown(h.anchor.exact, { href, note: h.note });
+export function highlightToMarkdown(h: Pick<Highlight, "anchor" | "note" | "text">, href?: string): string {
+  return quoteToMarkdown(highlightText(h), { href, note: h.note });
 }

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "cn";
 import { CheckCircle2Icon, SearchIcon, Trash2Icon } from "lucide-react";
-import type { BookMeta, Highlight, TocEntry } from "zreader";
+import { highlightText, type BookMeta, type Highlight, type TocEntry } from "zreader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,7 @@ export function ContentsSheet(p: ContentsSheetProps) {
     const q = query.trim().toLowerCase();
     const groups = new Map<string, Highlight[]>();
     highlights
-      .filter((h) => !q || h.anchor.exact.toLowerCase().includes(q) || h.note?.toLowerCase().includes(q))
+      .filter((h) => !q || highlightText(h).toLowerCase().includes(q) || h.note?.toLowerCase().includes(q))
       .sort((a, b) => (order.get(a.chapterId) ?? 0) - (order.get(b.chapterId) ?? 0) || a.anchor.start - b.anchor.start)
       .forEach((h) => groups.set(h.chapterId, [...(groups.get(h.chapterId) ?? []), h]));
     return groups;
@@ -169,7 +169,7 @@ export function ContentsSheet(p: ContentsSheetProps) {
                             onClick={jumpOr(cid, () => p.onJumpHighlight(h.id))}
                             className={cn("flex-1 rounded-md border-l-4 bg-muted/40 px-3 py-2 text-sm transition-colors hover:bg-muted", quoteBorderClass(h.color))}
                           >
-                            <span className="line-clamp-3 font-serif">{h.anchor.exact}</span>
+                            <span className="line-clamp-3 font-serif">{highlightText(h)}</span>
                             {h.note && <span className="mt-1 line-clamp-2 block text-muted-foreground">{noteText(h.note)}</span>}
                             <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                               {dateFmt(h.updatedAt)}

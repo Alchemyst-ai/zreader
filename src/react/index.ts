@@ -3,6 +3,8 @@ export {
   useReader,
   useReaderStore,
   useBlobStore,
+  useMathLoader,
+  useRegisterMath,
   useBlobUrl,
   useBlobUsage,
   useSettings,

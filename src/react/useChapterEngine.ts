@@ -13,6 +13,7 @@ import {
   selectionSpan,
   sentenceSpanAt,
   spanToRange,
+  spanToText,
   BLOCK_ATTR,
   IGNORE_ATTR,
   type Highlight,
@@ -34,6 +35,7 @@ export interface SelectionRect {
 
 export interface SelectionState {
   span: TextSpan;
+  /** The selected text, with formulas as `$TeX$` (see `spanToText`). */
   text: string;
   rect: SelectionRect;
 }
@@ -206,7 +208,7 @@ export function useChapterEngine(opts: ChapterEngineOptions) {
       const r = sel.getRangeAt(0).getBoundingClientRect();
       setSelection({
         span,
-        text: index.text.slice(span.start, span.end),
+        text: spanToText(index, span),
         rect: { top: r.top, left: r.left, bottom: r.bottom, right: r.right, width: r.width, height: r.height },
       });
     };
@@ -259,7 +261,7 @@ export function useChapterEngine(opts: ChapterEngineOptions) {
         if (color && dup.color !== color) store.updateHighlight(bookId, dup.id, { color });
         return dup;
       }
-      return store.addHighlight({ bookId, chapterId, anchor, color, note });
+      return store.addHighlight({ bookId, chapterId, anchor, color, note, text: spanToText(index, span) });
     },
     [getIndex, contentHash, highlights, store, bookId, chapterId],
   );

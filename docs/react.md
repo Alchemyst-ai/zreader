@@ -36,6 +36,7 @@ import "zreader/styles.css";
 | `toaster` | boolean | `true` | Render a sonner `<Toaster>`. Set `false` if your app already has one |
 | `adapter` | `StorageAdapter` | `localStorage` | Custom storage (see [Reader features](./reader-features.md#storage)) |
 | `store` | `ReaderStore` | — | Provide your own store (tests, advanced) |
+| `math` | `MathLoader` | — | Math in the scratchpad, e.g. `loadMath` from `zreader/math/katex` (see [Math → In the scratchpad](./math.md#in-the-scratchpad)) |
 | `blobStore` | `BlobStore` | IndexedDB | Where images readers add are kept (see [Reader images](./reader-features.md#reader-images)) |
 | `onStorageError` | `(error) => void` | `console.warn` | Called on quota and write errors |
 

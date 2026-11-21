@@ -13,6 +13,8 @@ export default defineConfig({
       { find: /^zreader\/next\/client$/, replacement: r("./src/next/client/index.tsx") },
       { find: /^zreader\/next\/server$/, replacement: r("./src/next/server/index.tsx") },
       { find: /^zreader\/rehype$/, replacement: r("./src/rehype/index.ts") },
+      { find: /^zreader\/math\/katex$/, replacement: r("./src/math/katex.tsx") },
+      { find: /^zreader\/math\/temml$/, replacement: r("./src/math/temml.tsx") },
       { find: /^zreader\/sw$/, replacement: r("./src/sw/index.ts") },
       { find: /^zreader\/agent\/react$/, replacement: r("./src/agent/react/index.ts") },
       { find: /^zreader\/agent$/, replacement: r("./src/agent/index.ts") },

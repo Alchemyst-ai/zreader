@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from
 import { cn } from "cn";
 import { toast } from "sonner";
 import { CopyIcon, ImagePlusIcon, QuoteIcon, Trash2Icon, XIcon } from "lucide-react";
-import type { Highlight } from "zreader";
+import { highlightText, type Highlight } from "zreader";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,7 +96,7 @@ export function HighlightPanel({ highlight, colors, focusNote, onColor, onNote, 
     }
   };
 
-  const exact = highlight?.anchor.exact ?? "";
+  const exact = highlight ? highlightText(highlight) : "";
 
   return (
     <ResponsivePanel
