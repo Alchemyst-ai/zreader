@@ -5,6 +5,8 @@ export {
   useBlobStore,
   useMathLoader,
   useRegisterMath,
+  useSandbox,
+  useRegisterSandbox,
   useBlobUrl,
   useBlobUsage,
   useSettings,

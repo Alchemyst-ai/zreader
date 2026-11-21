@@ -24,8 +24,8 @@ import {
   StrikethroughIcon,
   Undo2Icon,
 } from "lucide-react";
-import { parseBlobUrl, type BlobStore, type PadScope } from "zreader";
-import { useAddImage, useBlobStore, useMathLoader, useReader, usePad, imageFiles } from "zreader/react";
+import { padKeySuffix, parseBlobUrl, type BlobStore, type PadScope } from "zreader";
+import { useAddImage, useBlobStore, useMathLoader, useReader, usePad, useSandbox, imageFiles } from "zreader/react";
 import { resolvePadFeatures, type ResolvedPadFeatures } from "./features";
 import { PAD_FEATURES } from "./pad-features";
 import { Button } from "@/components/ui/button";
@@ -299,7 +299,10 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
   };
 
   const mathLoader = useMathLoader();
-  const features = useMemo(() => resolvePadFeatures({ mathLoader }, PAD_FEATURES), [mathLoader]);
+  const sandbox = useSandbox();
+  const scopeId = padKeySuffix(scope);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const features = useMemo(() => resolvePadFeatures({ mathLoader, sandbox, scope }, PAD_FEATURES), [mathLoader, sandbox, scopeId]);
   const initial = features.contentFor(pad);
   const editor = useEditor({
     immediatelyRender: false,

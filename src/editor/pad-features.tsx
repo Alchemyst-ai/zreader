@@ -1,14 +1,18 @@
 /** The scratchpad's optional features, in toolbar order. RunnableCode joins this list. */
-import { SigmaIcon } from "lucide-react";
-import type { MathLoader } from "zreader";
+import { SigmaIcon, SquareTerminalIcon } from "lucide-react";
+import { TAB_ID, padKeySuffix, type MathLoader, type PadScope, type SandboxConnection } from "zreader";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PadFeature } from "./features";
 import { MATH_NODE_TYPES, markdownHasMath, mathExtensions } from "./math";
+import { RUNNABLE_NODE, markdownHasRunnable, runnableCode } from "./runnable";
 
 /** What the reader's setup provides; each feature turns on when its part is present. */
 export interface PadFeatureContext {
   mathLoader: MathLoader | null;
+  sandbox: SandboxConnection | null;
+  /** The pad being edited: RunnableCode gets one Kernel per pad (and language) in this tab. */
+  scope: PadScope;
 }
 
 const math: PadFeature<PadFeatureContext> = {
@@ -41,4 +45,37 @@ const math: PadFeature<PadFeatureContext> = {
     },
 };
 
-export const PAD_FEATURES: readonly PadFeature<PadFeatureContext>[] = [math];
+const runnable: PadFeature<PadFeatureContext> = {
+  name: "runnable",
+  nodeTypes: [RUNNABLE_NODE],
+  markdownHas: markdownHasRunnable,
+  activate: ({ sandbox, scope }) =>
+    sandbox && {
+      extensions: [
+        runnableCode({
+          languages: sandbox.languages,
+          client: () => sandbox.client(),
+          kernel: `${padKeySuffix(scope)}#${TAB_ID}`,
+          codeSource: "scratchpad",
+        }),
+      ],
+      toolbar: (editor) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Insert runnable code"
+              onClick={() => (editor.chain().focus() as unknown as { insertRunnableCode(): { run(): boolean } }).insertRunnableCode().run()}
+            >
+              <SquareTerminalIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Insert runnable code (Shift+Enter runs it)</TooltipContent>
+        </Tooltip>
+      ),
+    },
+};
+
+export const PAD_FEATURES: readonly PadFeature<PadFeatureContext>[] = [math, runnable];
