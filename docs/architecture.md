@@ -17,6 +17,8 @@ graph TB
         agentreact["zreader/agent/react<br/><small>CopyReference, MarkdownAlternate</small>"]
         nextclient["zreader/next/client<br/><small>NextReaderProvider</small>"]
         rehype["zreader/rehype<br/><small>rehypeBlocks</small>"]
+        math["zreader/math/katex, /temml<br/><small>scratchpad math (lazy engine)</small>"]
+        sw["zreader/sw<br/><small>offline service worker script</small>"]
     end
 
     subgraph server["Server / build time (Node 20.9+)"]
@@ -35,6 +37,7 @@ graph TB
     agentreact --> react
     nextclient --> react
     rehype --> core
+    math --> react
 
     config --> core
     content --> config
@@ -49,6 +52,8 @@ graph TB
     nextserver --> nextclient
     nextserver --> react
     nextserver --> agentreact
+    nextserver --> sw
+    agent --> content
 
     content -. "import() at call time" .-> vconfig
     plugins -. "import() inside hooks" .-> agent
@@ -56,6 +61,8 @@ graph TB
     content -. "types only" .-> agent
     editor -. "types only" .-> core
     react -. "import() when the pad opens" .-> editor
+    math -. "import() when a pad shows a formula" .-> engine["katex / temml"]
+    content -. "import() when content.math is set" .-> engines["katex / temml / @mathjax/src"]
     nextserver -. "alias, not an import" .-> uconfig
 ```
 
@@ -63,6 +70,8 @@ Two things to read off it:
 
 - **There is no runtime cycle.** Every dashed edge is either a type-only import or a lazy `import()`. The two that look like a loop — `zreader/agent` ↔ `zreader/plugins/agent`, and `zreader/agent` ↔ `zreader/content` — are types in both directions, so nothing is loaded at runtime.
 - **The server half never reaches into the browser half.** `zreader/next/server` touches `zreader/react` only to pass component references across the RSC boundary.
+- **Math engines are never bundled.** They are optional peer dependencies loaded with `import()` only when selected. On the server the imports carry `webpackIgnore` / `turbopackIgnore` comments, so an app that installed only `katex` still builds. In the browser, `zreader/math/*` is opt-in and the engine becomes its own chunk.
+- **`zreader/agent` serves assets too.** It imports `serveAsset` from the content layer at runtime, so one proxy answers `.md` twins and book images.
 
 ## Subpaths never inline each other
 
@@ -125,9 +134,12 @@ flowchart TD
     file --> loader["content/loader.ts<br/><small>glob, frontmatter, schemas, drafts</small>"]
     loader --> entry["ChapterEntry<br/><small>file, format, body, mtimeMs, data</small>"]
 
-    entry --> pipeline["content/pipeline.ts<br/><small>remark → rehype → DOMPurify → rehypeBlocks</small>"]
-    pipeline --> page["RenderedChapter<br/><small>html or MDX component, toc, blocks, contentHash</small>"]
+    entry --> pipeline["content/pipeline.ts<br/><small>remark (+ remark-math) → rehype → DOMPurify<br/>→ rehypeMath → rehypeImages → rehypeBlocks</small>"]
+    pipeline --> cache["compile cache<br/><small>memory + disk, keyed by file, options, basePath;<br/>image files as dependencies</small>"]
+    cache --> page["RenderedChapter<br/><small>html or MDX component, toc, blocks, contentHash</small>"]
+    page --> rsc["ReaderChapter (Next.js)<br/><small>htmlToReact: img → next/image</small>"]
     page --> reader["&lt;Reader&gt;<br/><small>block ids anchor highlights and progress</small>"]
+    rsc --> reader
 
     entry --> conv["agent/markdown.ts<br/><small>mdxToMarkdown / htmlToMarkdown</small>"]
     conv --> doc["AgentDocument<br/><small>body + meta + preamble</small>"]
@@ -136,6 +148,22 @@ flowchart TD
 
     rehype["zreader/rehype<br/><small>rehypeBlocks</small>"] -. "same block ids, at build time" .-> reader
 ```
+
+The order inside the page pipeline matters:
+
+| Step | Runs | Why there |
+| --- | --- | --- |
+| `remark-math` | `.md`, `.mdx` (only with `content.math`) | Before MDX sees `{…}`, so TeX braces never become JavaScript |
+| User `remarkPlugins` / `rehypePlugins` | `.md`, `.mdx` | As before; in `.md` they run before sanitizing |
+| DOMPurify | `.md`, `.html` | HTML profile, plus SVG (`sanitize.svg`) and MathML (when math is on). `style` stays forbidden |
+| `rehypeMathDelimiters` | `.html` | Turns `\(…\)`, `\[…\]`, `$$…$$` into math nodes |
+| `rehypeMath` | all three | **After** sanitizing: engine output is MathML that never has to pass the sanitizer's style rules |
+| `rehypeImages` | all three | URL policy, data-URI limits, relative paths → `_assets` URLs, measuring, captions, `data-zr-image` / `data-zr-zoom` |
+| `rehypeBlocks` | all three | Block ids, now including figures, image-only paragraphs and display math |
+
+MDX output is not sanitized (MDX is code), so for `.mdx` the math and image steps run as rehype plugins inside `@mdx-js/mdx`.
+
+Images next to chapters are served at `{basePath}/{book}/_assets/{hash}/{path}`, where `{hash}` comes from the file's contents. `resolveBookAsset` refuses anything outside the book folder (including symlinks), hidden files and unlisted extensions; `serveAsset` re-checks the same rules per request and sends immutable caching, `nosniff` and a strict CSP for SVG. Compiled chapters record the image files they used, so in development a changed image recompiles the chapter.
 
 The converters stay pure — they return plain Markdown. Plugins decorate the *handler's* output, so calling `chapterToMarkdown()` yourself still gives you a clean document.
 
@@ -159,6 +187,8 @@ flowchart TD
     hhooks --> res["Response"]
 ```
 
+After plugin routes and before the `.md` routes, `GET`/`HEAD` requests under `{basePath}/{book}/_assets/` are answered by `serveAsset` (turn off with `createAgentHandler({ assets: false })`).
+
 Plugin routes are matched before the core, which is why `POST {basePath}/mcp` never falls through to a book called `mcp`, and why `OPTIONS` on any path of the shelf reaches `cors()`.
 
 ## The client runtime
@@ -174,25 +204,44 @@ graph TB
     hooks --> ui["BookShelf, BookContents,<br/>Reader, panels"]
     ui --> anchor["anchoring + CSS Custom Highlight API"]
     anchor --> blocks["data-block-id<br/><small>from rehypeBlocks or the browser</small>"]
+    provider --> blobs["BlobStore<br/><small>IndexedDB &lt;prefix&gt;:blobs</small>"]
+    blobs --> pad["scratchpad + notes<br/><small>zr-blob:&lt;id&gt; images</small>"]
+    provider -. "math loader (optional)" .-> pad
+    ui --> viewer["ImageViewer<br/><small>img[data-zr-zoom]</small>"]
+    ui -. "Save for offline" .-> swc["service worker<br/><small>Cache API, zreader/sw</small>"]
 ```
 
-Nothing here talks to a server. The store is the only writer, keys are namespaced and versioned with forward migrations, and tabs stay in sync through `storage` events.
+Nothing here talks to a server, except the opt-in offline worker, which only fetches what a reader asks to save. The store is the only writer to `localStorage`; keys are namespaced and versioned with forward migrations, and tabs stay in sync through `storage` events.
+
+Three stores, by kind of data:
+
+| Data | Where | Why |
+| --- | --- | --- |
+| Settings, highlights, bookmarks, progress, pads | `localStorage` (`zr:v1:*`) | Small strings, synchronous reads, `storage` events for tab sync |
+| Images readers add | IndexedDB (`<prefix>:blobs`), ids are content hashes | Binary and large; records refer to them as `zr-blob:<id>` |
+| Saved books (offline) | Cache API (`zreader-offline-v1`) | HTTP responses; pages and `/_next/` network first, `_assets` cache first |
+
+**Highlights and math.** Anchoring works on the rendered text (TeX annotations are `data-zr-ignore`), but `spanToText` writes formulas as `$TeX$`, and that Markdown is stored as `Highlight.text` for lists, copy, export and quotes.
+
+**The scratchpad's Markdown.** Each editor gets its own `marked` instance, so the math tokenizers it registers never reach other Tiptap editors on the page. Images and math are atom nodes with custom views; the stored format stays Markdown.
 
 ## Source layout
 
 ```
 src/
-  core/            zreader            store, storage, anchoring, blocks, backup, types
+  core/            zreader            store, storage, anchoring, blocks, backup, blob store, types
   react/           zreader/react      provider, components, hooks, shadcn/ui parts
-  editor/          zreader/editor     the Tiptap scratchpad (lazy-loaded)
+  editor/          zreader/editor     the Tiptap scratchpad (lazy-loaded), image and math nodes
+  math/            zreader/math/*     scratchpad math loaders (KaTeX, Temml)
+  sw/              zreader/sw         the offline service worker script
   rehype/          zreader/rehype     rehypeBlocks
   config/          zreader/config     defineConfig, resolveConfig, bookshelves, validation
-  content/         zreader/content    loader, pipeline, sanitize, the content API
+  content/         zreader/content    loader, pipeline, sanitize, images, assets, math, htmlToReact, the content API
   agent/           zreader/agent      handler, markdown converters
   plugins/agent/   zreader/plugins/agent   the agent plugins (frontmatter, llmsTxt, mcp…)
   next/            zreader/next       withReader, applyReaderConfig
   next/client/     zreader/next/client     NextReaderProvider
-  next/server/     zreader/next/server     ReaderRoot, ReaderChapter, params helpers
+  next/server/     zreader/next/server     ReaderRoot, ReaderChapter, next/image, assetRoute, serviceWorkerRoute
   virtual-config/  zreader/virtual-config  the resolved config
   user-config/     zreader/user-config     alias target (or cwd discovery)
   stubs/           —                  server-only and empty-config browser stubs
@@ -206,9 +255,9 @@ Plugins live **beside** `src/agent/`, not inside it, so the dependency only ever
 
 | Group | Entries | Format |
 | --- | --- | --- |
-| Node, split | `core`, `content`, `next/server`, `rehype`, `agent`, `plugins/agent`, `virtual-config`, `user-config`, `stubs` | ESM |
+| Node, split | `core`, `content`, `next/server`, `rehype`, `sw`, `agent`, `plugins/agent`, `virtual-config`, `user-config`, `stubs` | ESM |
 | Node, unsplit | `config`, `next` | ESM + CJS (loaded from `next.config.*`) |
-| Browser, unsplit | `react`, `editor`, `next/client`, `agent/react` | ESM |
+| Browser, unsplit | `react`, `editor`, `next/client`, `agent/react`, `math/katex`, `math/temml` | ESM |
 
 Then `use-client.mjs` re-adds the `"use client"` directive that Rollup drops, and the checks run.
 
@@ -216,16 +265,21 @@ Then `use-client.mjs` re-adds the `"use client"` directive that Rollup drops, an
 
 | Script | Fails the build when |
 | --- | --- |
-| `check-bundles.mjs` | A browser bundle (`react`, `editor`, `agent/react`, `rehype`, `core`) imports `next`, `next/*` or a Node built-in |
+| `check-bundles.mjs` | A browser bundle (`react`, `editor`, `agent/react`, `rehype`, `core`, `math/katex`, `math/temml`) imports `next`, `next/*` or a Node built-in |
 | `check-bundles.mjs` | `zreader/plugins/agent` statically imports `unified`, `zreader/content` or `zreader/virtual-config` — `reader.config.ts` is loaded by jiti inside `next.config`, so the plugin factories must stay light |
 | `publint` + `attw` | The `exports` map, types or conditions don't resolve for any consumer |
 
 `npm test` covers the same boundaries from the other side: one test walks the static import graph out of `src/plugins/agent/index.ts`, and another runs every plugin example in [Agent plugins](./plugins.md).
 
+The [examples](../examples) are the integration check that unit tests can't be: both build against the local package, and the Next.js one exercises the proxy, `_assets`, `next/image`, math and offline reading in a real browser.
+
 ## Further reading
+
+- [Design](./design.md) — why it works this way, and the trade-offs
 
 - [Concepts](./concepts.md) — the catalogue, ids and URLs, block ids, server vs client
 - [Configuration](./configuration.md#bookshelves) — bookshelves, the unit every surface reads from
 - [Agent-readable content](./agent.md) — the handler and its routes
 - [Agent plugins](./plugins.md) — the pipeline and how to extend it
+- [Images](./images.md), [Math](./math.md) — the two content pipelines added in 0.4
 - [API reference](./api-reference.md) — every entry point and its exports

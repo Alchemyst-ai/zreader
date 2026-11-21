@@ -7,7 +7,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | If you want to… | Read |
 | --- | --- |
 | Get a reader running in Next.js or React | [Getting started](./getting-started.md) |
-| Understand how the pieces fit | [Concepts](./concepts.md), then [Architecture](./architecture.md) |
+| Understand how the pieces fit | [Concepts](./concepts.md), then [Architecture](./architecture.md) and [Design](./design.md) |
 | Start from a working app | [`examples/`](../examples): Next.js + shadcn and Vite + shadcn |
 | Ship it | [Production checklist](./production-checklist.md) |
 
@@ -32,7 +32,8 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 
 | Page | Covers |
 | --- | --- |
-| [Architecture](./architecture.md) | Entry points, the browser/server split, config resolution, the request and render pipelines, the build |
+| [Architecture](./architecture.md) | Entry points, the browser/server split, config resolution, the request and render pipelines, storage, the build |
+| [Design](./design.md) | The decisions behind anchoring, images, math, storage, offline reading and agents, and their trade-offs |
 | [API reference](./api-reference.md) | Every entry point and its exports |
 | [Troubleshooting](./troubleshooting.md) | Common errors and how to fix them |
 | [Production checklist](./production-checklist.md) | What to check before shipping, and when upgrading to 0.4 |

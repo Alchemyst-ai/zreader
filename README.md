@@ -2,12 +2,14 @@
 
 A localStorage-first, mobile-first book reader for React — for books written in **Markdown, MDX and HTML**, not EPUB.
 
-Readers get sentence highlights with notes, bookmarks, reading progress, a Markdown scratchpad and reading settings, and everything they do stays in their browser. Every page also gets a **Markdown twin** an LLM can fetch, so the book is an API as well as a site.
+Readers get sentence highlights with notes, bookmarks, reading progress, a Markdown scratchpad and reading settings, and everything they do stays in their browser. Chapters can carry images and TeX math, rendered at build time. Every page also gets a **Markdown twin** an LLM can fetch, so the book is an API as well as a site.
 
 ```sh
 npm i zreader
 # the scratchpad: lazy-loaded, but bundlers resolve it at build time, so install it
 npm i @tiptap/react @tiptap/pm @tiptap/core @tiptap/starter-kit @tiptap/extension-list @tiptap/extensions @tiptap/markdown
+# optional: math, with one engine of your choice (content.math in reader.config.ts)
+npm i katex          # or: temml, @mathjax/src
 ```
 
 Runnable apps: [`examples/next-shadcn`](./examples/next-shadcn) and [`examples/vite-shadcn`](./examples/vite-shadcn). Before shipping, go through the [production checklist](./docs/production-checklist.md).
@@ -16,14 +18,14 @@ Runnable apps: [`examples/next-shadcn`](./examples/next-shadcn) and [`examples/v
 
 **For readers**
 
-- **Sentence highlights** — select text, or switch on highlight mode and tap a sentence. Up to six colours (four by default), a note on any highlight, and a list per book.
-- **Bookmarks** on any block, with an excerpt and an undo.
+- **Sentence highlights** — select text, or switch on highlight mode and tap a sentence. Up to six colours (four by default), a note on any highlight, and a list per book. Highlights over math keep the TeX when copied, exported or quoted.
+- **Bookmarks** on any block, including images and display formulas, with an excerpt and an undo.
 - **Reading progress** that resumes where they left off and marks chapters read.
-- **A WYSIWYG Markdown scratchpad** (Tiptap) with checklists — a pad per chapter, per book and a global one, and highlights quote straight into it. Images pasted into the pad or a note are kept in the browser (IndexedDB).
+- **A WYSIWYG Markdown scratchpad** (Tiptap) with checklists — a pad per chapter, per book and a global one, and highlights quote straight into it. Images pasted into the pad or a note are kept in the browser (IndexedDB), and with [scratchpad math](./docs/math.md#in-the-scratchpad) `$…$` renders as formulas you can click to edit.
 - **A full-screen image viewer** with pinch and wheel zoom.
 - **Offline reading** (opt-in): save a whole book, images included.
 - **Reading settings**: theme (light, sepia, dark), text size, line spacing, line width and font.
-- **JSON backup and restore**, with a reminder that their notes live only in this browser.
+- **JSON backup and restore**, images included, with a reminder that their notes live only in this browser.
 - None of it needs an account, a server or a network call.
 
 **For you**
@@ -31,7 +33,8 @@ Runnable apps: [`examples/next-shadcn`](./examples/next-shadcn) and [`examples/v
 - One `ReaderProvider` and three components — `BookShelf`, `BookContents`, `Reader` — driven by a plain `BookMeta[]` catalogue. It can come from JSON, a CMS, a fetch or a folder of files.
 - Runs on **Vite, React Router, Remix, TanStack or Next.js**. Next.js gets an optional adapter that compiles chapters and generates every page statically.
 - An optional **content layer** for `content/books/**`: Markdown, MDX and HTML, with frontmatter schemas, ordering, parts, drafts and DOMPurify sanitizing.
-- **[Images](./docs/images.md)** from files next to the chapter, URLs or base64, measured at build time, with captions and `next/image` under Next.js. **[Math](./docs/math.md)** with KaTeX, Temml or MathJax, rendered as MathML.
+- **[Images](./docs/images.md)** from files next to the chapter (served with immutable, content-hashed URLs), URLs or base64. Measured at build time, captioned, lazy-loaded, and rendered through `next/image` under Next.js. Remote hosts and base64 sizes are limits you set.
+- **[Math](./docs/math.md)** with KaTeX, Temml or MathJax, rendered as MathML on the server: no math JavaScript or fonts for readers. Opt-in.
 - **Mobile-first UI** on shadcn/ui, styled by a precompiled stylesheet or your own Tailwind v4 tokens.
 - Highlights anchor to stable **block ids** and survive edits; a build-time rehype plugin puts the same ids in the HTML before first paint.
 - **Bookshelves**: several independent readers on one site, each with its own route, content folder and plugins.
@@ -75,6 +78,7 @@ zreader is the other shape:
 | Highlights, notes, bookmarks, progress | Your job | Built in, versioned, in `localStorage`, with backup/restore |
 | Fixing a typo | Rearchive and re-upload the EPUB | Edit the file; highlights re-anchor |
 | For LLMs | The text is inside a zip | A `.md` twin per page, `llms.txt`, and an MCP server |
+| Images and math | Whatever the EPUB packs | Files next to the chapter, `next/image`, TeX → MathML at build time |
 | Inside a chapter | Whatever the EPUB allows | Your MDX components |
 
 It is **not** an EPUB reader and doesn't try to be. If your book lives as files in a repo — a technical book, a handbook, course notes, a changelog, a docs site — zreader turns it into a reading app.
@@ -107,7 +111,7 @@ export const generateStaticParams = getChapterParams;
 export default async function Page({ params }) { return <ReaderChapter {...await params} />; }
 ```
 
-`/books` is now a reading site.
+`/books` is now a reading site. To serve images that sit next to chapters, add `createAgentHandler()` in `proxy.ts` or the `assetRoute()` handler; see [Images → Serving them](./docs/images.md#serving-them).
 
 Any other React app: pass the catalogue to the provider and render chapters as children.
 
@@ -128,6 +132,8 @@ import "zreader/styles.css";
 - [Getting started](./docs/getting-started.md) — install, and the Next.js / React / CMS paths
 - [Concepts](./docs/concepts.md) — the catalogue, ids and URLs, block ids, server vs client
 - [Architecture](./docs/architecture.md) — the entry points, the browser/server split, how a chapter becomes a page and a `.md` twin
+- [Design](./docs/design.md) — why it works this way: anchoring, images, math, storage, offline, and the trade-offs
+- [Examples](./examples) — Next.js + shadcn and Vite + shadcn apps
 
 **Build it**
 
@@ -138,6 +144,8 @@ import "zreader/styles.css";
 - [Styling](./docs/styling.md) — `styles.css` vs `tailwind.css`, theme tokens, themes
 - [Reader features](./docs/reader-features.md) — highlights, notes, bookmarks, progress, scratchpad, settings, backup, storage
 - [Formats: Markdown, MDX, HTML, PDF](./docs/formats.md) — what each format does in the reader and in its `.md` twin
+- [Images](./docs/images.md) — files next to chapters, URLs, base64, sizes, `next/image`, the viewer, covers
+- [Math](./docs/math.md) — KaTeX, Temml or MathJax in chapters, and math in the scratchpad
 
 **Make it agent-readable**
 
@@ -149,10 +157,11 @@ import "zreader/styles.css";
 
 - [API reference](./docs/api-reference.md) — every entry point and its exports
 - [Troubleshooting](./docs/troubleshooting.md) — common errors and how to fix them
+- [Production checklist](./docs/production-checklist.md) — what to verify before shipping, and when upgrading to 0.4
 
 ## Requirements
 
-React 19 or later. Node 20.9 or later for the server entry points (`zreader/content`, `zreader/agent`, `zreader/next`). Next.js 15.5 or later for the Next.js adapter.
+React 19 or later. Node 20.9 or later for the server entry points (`zreader/content`, `zreader/agent`, `zreader/next`). Next.js 15.5 or later for the Next.js adapter. Math needs `katex` (0.16+), `temml` (0.11+) or `@mathjax/src` (4+), whichever you choose.
 
 ## License
 
