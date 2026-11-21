@@ -8,6 +8,8 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | --- | --- |
 | Get a reader running in Next.js or React | [Getting started](./getting-started.md) |
 | Understand how the pieces fit | [Concepts](./concepts.md), then [Architecture](./architecture.md) |
+| Start from a working app | [`examples/`](../examples): Next.js + shadcn and Vite + shadcn |
+| Ship it | [Production checklist](./production-checklist.md) |
 
 ## Guides
 
@@ -17,11 +19,13 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | [Configuration](./configuration.md) | Every option in `reader.config.ts`, defaults, validation |
 | [React](./react.md) | `ReaderProvider`, the components, the top bar, hooks, Vite, React Router, MDX |
 | [Next.js](./nextjs.md) | `withReader`, `ReaderRoot`, `ReaderChapter`, static params, deployment |
-| [Reader features](./reader-features.md) | Highlights, notes, bookmarks, progress, scratchpad, settings, backup, storage |
+| [Reader features](./reader-features.md) | Highlights, notes, bookmarks, progress, scratchpad, reader images, offline reading, settings, backup, storage |
 | [Agent-readable content](./agent.md) | `.md` twins of every page, bookshelves, the plugin system, `createAgentHandler()` in any server |
 | [Agent plugins](./plugins.md) | The built-ins (`llms.txt`, MCP, CORS…), the pipeline, and how to write your own |
 | [Copy Reference](./copy-reference.md) | The "Copy reference" button, Open in ChatGPT / Claude / Grok, `<MarkdownAlternate>` |
 | [Formats: Markdown, MDX, HTML, PDF](./formats.md) | What each format does in the reader and in its `.md` twin |
+| [Math](./math.md) | TeX math with KaTeX, Temml or MathJax, rendered as MathML |
+| [Images](./images.md) | Images next to chapters, URLs and base64, sizes, `next/image`, captions, the viewer, covers |
 | [Styling](./styling.md) | `styles.css` vs `tailwind.css`, theme tokens, themes |
 
 ## Reference
@@ -31,6 +35,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | [Architecture](./architecture.md) | Entry points, the browser/server split, config resolution, the request and render pipelines, the build |
 | [API reference](./api-reference.md) | Every entry point and its exports |
 | [Troubleshooting](./troubleshooting.md) | Common errors and how to fix them |
+| [Production checklist](./production-checklist.md) | What to check before shipping, and when upgrading to 0.4 |
 
 ## Entry points at a glance
 
@@ -40,6 +45,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | `zreader/editor` | Browser | The Tiptap scratchpad editor (lazy-loaded by `zreader/react`) |
 | `zreader` | Anywhere | Core: storage store, anchoring, block ids, backup |
 | `zreader/rehype` | Build time | `rehypeBlocks` for your own MDX/Markdown pipeline |
+| `zreader/sw` | Anywhere | The offline-reading service worker script |
 | `zreader/content` | Node | Content layer for `content/books/**` |
 | `zreader/config` | Node | `defineConfig`, `glob`, `z` for `reader.config.ts` |
 | `zreader/next` | Node (`next.config`) | `withReader()` |

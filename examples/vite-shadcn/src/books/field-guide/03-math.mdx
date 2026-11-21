@@ -1,0 +1,15 @@
+export const meta = { title: "Math", description: "TeX rendered as MathML with KaTeX." };
+
+Math is written in TeX and rendered as MathML at build time, so no math JavaScript runs in the browser. Inline: $E = mc^2$, and Euler's identity $e^{i\pi} + 1 = 0$.
+
+Braces inside dollar signs are TeX, not MDX expressions: $\frac{a}{b}$ works.
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+Each display formula is its own block, so you can bookmark it.
+
+```math
+\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
+```

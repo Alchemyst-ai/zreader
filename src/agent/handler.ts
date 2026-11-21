@@ -14,6 +14,7 @@
  */
 import type { BookEntry, ChapterLookup } from "zreader/content";
 import type { ResolvedShelf } from "../config/index";
+import { serveAsset } from "../content/assets";
 import type {
   AgentDocument,
   AgentPlugin,
@@ -53,6 +54,8 @@ export interface AgentHandlerOptions {
   cacheControl?: string;
   /** Silence the development warnings (§10). */
   devWarnings?: boolean;
+  /** Serve book assets (`{basePath}/{book}/_assets/…`, chapter images). Default `true`. */
+  assets?: boolean;
   /** Advanced: serve a custom content source as a shelf (tests, non-file content). */
   sources?: Array<{ shelf: ResolvedShelf; api: AgentContentSource }>;
 }
@@ -416,6 +419,14 @@ export function createAgentHandler(options: AgentHandlerOptions = {}): AgentHand
     }
 
     if (method !== "GET" && method !== "HEAD") return undefined;
+    if (options.assets !== false) {
+      const asset = await serveAsset(request, {
+        basePath: owner.shelf.basePath,
+        assets: owner.shelf.content.assets,
+        bookDir: async (id) => (await owner.api.getBook(id))?.dir ?? null,
+      });
+      if (asset) return asset;
+    }
     const match = matchAgentRoute(pathname, owner.shelf.basePath);
     if (!match) return undefined;
 

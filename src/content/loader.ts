@@ -6,7 +6,9 @@ import matter from "gray-matter";
 import { glob as globFiles } from "tinyglobby";
 import type { ResolvedReaderConfig } from "../config/index";
 import type { BookMeta, ChapterMeta } from "../core/types";
-import { compileMdx, renderHtml, renderMarkdown, type ChapterFormat, type HtmlResult, type MdxCompiled } from "./pipeline";
+import { resolveBookAsset } from "./assets";
+import { classifyImageUrl } from "./images";
+import { compileMdx, renderHtml, renderMarkdown, type ChapterFormat, type HtmlResult, type MdxCompiled, type PipelineOptions } from "./pipeline";
 
 export interface ChapterEntry extends ChapterMeta {
   bookId: string;
@@ -111,6 +113,7 @@ export async function loadBooks(config: ResolvedReaderConfig): Promise<BookEntry
       }
     }
     const data = validate(schemas.book, rawMeta, metaFile, "book.json");
+    const cover = typeof data.cover === "string" ? await resolveCover(data.cover, { config, dir, bookId, metaFile }) : undefined;
     const explicit = Array.isArray(data.chapters) ? (data.chapters as string[]) : null;
     chapters.sort((a, b) => {
       if (explicit) {
@@ -125,7 +128,7 @@ export async function loadBooks(config: ResolvedReaderConfig): Promise<BookEntry
       title: String(data.title ?? titleCase(bookId)),
       authors: Array.isArray(data.authors) ? (data.authors as string[]) : [],
       description: typeof data.description === "string" ? data.description : undefined,
-      cover: typeof data.cover === "string" ? data.cover : undefined,
+      cover,
       subtitle: typeof data.subtitle === "string" ? data.subtitle : undefined,
       chapters: chapters.map(({ id, title, order, description, part, label, number }) => ({
         id,
@@ -145,9 +148,23 @@ export async function loadBooks(config: ResolvedReaderConfig): Promise<BookEntry
   return books;
 }
 
+/** A relative `cover` in book.json becomes an asset URL; anything else is kept as written. */
+async function resolveCover(
+  cover: string,
+  { config, dir, bookId, metaFile }: { config: ResolvedReaderConfig; dir: string; bookId: string; metaFile: string },
+): Promise<string | undefined> {
+  if (classifyImageUrl(cover) !== "relative") return cover;
+  const r = await resolveBookAsset(cover, { fromFile: metaFile, bookDir: dir, bookId, basePath: config.reader.basePath, assets: config.content.assets });
+  if (typeof r === "string") {
+    console.warn(`[zreader] ${relativeToRoot(config, metaFile)}: cover ${cover} ignored: ${r}`);
+    return undefined;
+  }
+  return r.url;
+}
+
 // ------------------------------------------------------------- compile cache
 
-const PIPELINE_VERSION = "2"; // bump when compiled output changes (e.g. block-id scheme)
+const PIPELINE_VERSION = "3"; // bump when compiled output changes (e.g. block-id scheme)
 const memory = new Map<string, Promise<HtmlResult | MdxCompiled>>();
 
 function pluginSignature(list: unknown[]): string {
@@ -167,6 +184,10 @@ function cacheKey(entry: ChapterEntry, config: ResolvedReaderConfig) {
         entry.body.length,
         createHash("sha1").update(entry.body).digest("hex"),
         JSON.stringify(c.sanitize),
+        JSON.stringify(c.images),
+        JSON.stringify(c.assets),
+        JSON.stringify(c.math),
+        config.reader.basePath,
         pluginSignature(c.remarkPlugins),
         pluginSignature(c.rehypePlugins),
       ].join("|"),
@@ -175,24 +196,74 @@ function cacheKey(entry: ChapterEntry, config: ResolvedReaderConfig) {
     .slice(0, 32);
 }
 
+/** A file a compiled chapter depends on (its images), checked before a cache hit is used. */
+export interface CompileDependency {
+  file: string;
+  mtimeMs: number;
+  size: number;
+}
+
+type Compiled = (HtmlResult | MdxCompiled) & { deps?: CompileDependency[] };
+
+async function stamp(file: string): Promise<CompileDependency | null> {
+  try {
+    const st = await stat(file);
+    return { file, mtimeMs: st.mtimeMs, size: st.size };
+  } catch {
+    return null;
+  }
+}
+
+async function depsFresh(deps: CompileDependency[] | undefined): Promise<boolean> {
+  if (!deps?.length) return true;
+  const now = await Promise.all(deps.map((d) => stamp(d.file)));
+  return now.every((n, i) => n != null && n.mtimeMs === deps[i]!.mtimeMs && n.size === deps[i]!.size);
+}
+
 export async function compileChapter(entry: ChapterEntry, config: ResolvedReaderConfig): Promise<HtmlResult | MdxCompiled> {
   const key = cacheKey(entry, config);
   const hit = memory.get(key);
-  if (hit) return hit;
+  if (hit) {
+    // Images can change without the chapter changing; re-check them in development.
+    if (process.env.NODE_ENV !== "development") return hit;
+    const done = await hit.catch(() => null);
+    if (done && (await depsFresh((done as Compiled).deps))) return done;
+    memory.delete(key);
+  }
   const p = (async () => {
     const dir = resolve(config.root, config.content.cacheDir);
     const diskFile = join(dir, `${key}.json`);
     try {
-      return JSON.parse(await readFile(diskFile, "utf8")) as HtmlResult | MdxCompiled;
+      const cached = JSON.parse(await readFile(diskFile, "utf8")) as Compiled;
+      if (await depsFresh(cached.deps)) return cached;
     } catch {
       /* miss */
     }
-    const opts = {
+    const used = new Set<string>();
+    const publicDir = resolve(config.root, "public");
+    const opts: PipelineOptions = {
       sanitize: config.content.sanitize,
       remarkPlugins: config.content.remarkPlugins as never,
       rehypePlugins: config.content.rehypePlugins as never,
+      math: config.content.math,
+      images: {
+        images: config.content.images,
+        source: relativeToRoot(config, entry.file),
+        publicDir: existsSync(publicDir) ? publicDir : undefined,
+        resolveLocal: async (src) => {
+          const r = await resolveBookAsset(src, {
+            fromFile: entry.file,
+            bookDir: join(resolve(config.root, config.content.loader.base), entry.bookId),
+            bookId: entry.bookId,
+            basePath: config.reader.basePath,
+            assets: config.content.assets,
+          });
+          if (typeof r !== "string" && r.file) used.add(r.file);
+          return r;
+        },
+      },
     };
-    let out: HtmlResult | MdxCompiled;
+    let out: Compiled;
     try {
       out =
         entry.format === "mdx"
@@ -203,6 +274,7 @@ export async function compileChapter(entry: ChapterEntry, config: ResolvedReader
     } catch (e) {
       throw new ContentError(`Failed to compile chapter: ${(e as Error).message}`, entry.file);
     }
+    if (used.size) out.deps = (await Promise.all([...used].map(stamp))).filter((d): d is CompileDependency => d != null);
     try {
       await mkdir(dir, { recursive: true });
       await writeFile(diskFile, JSON.stringify(out));

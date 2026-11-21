@@ -103,6 +103,16 @@ export interface ReaderClientOptions {
   highlightColors: HighlightColor[];
   defaultHighlightColor: HighlightColor;
   scratchpad: { enabled: boolean; scopes: PadScopeKind[] };
+  /**
+   * Images readers paste or drop into the scratchpad and notes, stored in
+   * IndexedDB. `maxBytes` caps one image.
+   */
+  userImages: { enabled: boolean; maxBytes: number };
+  /**
+   * Offline reading (opt-in): a "Save for offline" button on book pages, backed
+   * by the service worker from `zreader/sw`, served at `serviceWorker`.
+   */
+  offline: { enabled: boolean; serviceWorker: string };
   /** Themes offered in the UI. Applied as a class on <html> via next-themes. */
   themes: ThemeName[];
   defaultTheme: ThemeName;

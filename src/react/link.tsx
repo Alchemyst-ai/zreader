@@ -15,3 +15,11 @@ export function defaultHref(basePath: string, bookId: string, chapterId?: string
   const path = chapterId ? `${base}/${encodeURIComponent(bookId)}/${encodeURIComponent(chapterId)}` : `${base}/${encodeURIComponent(bookId)}`;
   return hash ? `${path}#${encodeURIComponent(hash)}` : path;
 }
+
+/** Image component for covers and other UI images (e.g. next/image with `fill`). Fills a sized, `relative` box. */
+export type ImageComponent = ComponentType<{ src: string; alt: string; className?: string; sizes?: string }>;
+
+export function DefaultImage({ src, alt, className, sizes }: { src: string; alt: string; className?: string; sizes?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} sizes={sizes} loading="lazy" decoding="async" className={className} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />;
+}

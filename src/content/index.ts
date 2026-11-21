@@ -21,6 +21,7 @@ import {
 import type { BookMeta, ChapterMeta, TocEntry } from "../core/types";
 import { compileChapter, loadBooks, type BookEntry, type ChapterEntry } from "./loader";
 import { runMdx, type MdxContent } from "./pipeline";
+import { serveAsset } from "./assets";
 import type { BlockInfo } from "../rehype/index";
 import type { AgentContentSource } from "../agent/handler";
 
@@ -112,10 +113,11 @@ function createApi(getHandle: () => Promise<ShelfHandle>) {
     async renderChapter(entry: ChapterEntry): Promise<RenderedChapter> {
       const compiled = await compileChapter(entry, configOf(await getHandle()));
       if (compiled.kind === "mdx") {
-        const { code, ...rest } = compiled;
+        const { code, deps: _deps, ...rest } = compiled as typeof compiled & { deps?: unknown };
         return { ...rest, kind: "mdx", Content: await runMdx(code) };
       }
-      return compiled;
+      const { deps: _deps, ...html } = compiled as typeof compiled & { deps?: unknown };
+      return html;
     },
 
     /** For `generateStaticParams`. Param names are configurable. */
@@ -177,6 +179,38 @@ export async function getShelves(): Promise<ResolvedShelf[]> {
   return (await globalConfig()).shelves;
 }
 
+export interface AssetHandlerOptions {
+  /** Shelf ids to serve. Defaults to every shelf. */
+  shelves?: string[];
+  /** Defaults to `public, max-age=31536000, immutable` (URLs carry a content hash). */
+  cacheControl?: string;
+}
+
+/**
+ * `Request → Response` handler for book assets
+ * (`{basePath}/{book}/_assets/{hash}/{path}`). Returns `undefined` for other URLs.
+ * `createAgentHandler()` includes it; use this one without the agent proxy.
+ */
+export function createAssetHandler(options: AssetHandlerOptions = {}) {
+  return async (request: Request): Promise<Response | undefined> => {
+    const config = await globalConfig();
+    const shelves = config.shelves
+      .filter((s) => !options.shelves || options.shelves.includes(s.id))
+      .sort((a, b) => b.basePath.length - a.basePath.length);
+    for (const shelf of shelves) {
+      const api = getShelf(shelf.id);
+      const res = await serveAsset(request, {
+        basePath: shelf.basePath,
+        assets: shelf.content.assets,
+        cacheControl: options.cacheControl,
+        bookDir: async (id) => (await api.getBook(id))?.dir ?? null,
+      });
+      if (res) return res;
+    }
+    return undefined;
+  };
+}
+
 const defaultApi = getShelf();
 
 export const getBooks = defaultApi.getBooks;
@@ -215,7 +249,7 @@ export function defineBooks(inline: InlineContent | ResolvedReaderConfig = {}) {
   );
 }
 
-export { loadBooks, compileChapter, ContentError, type BookEntry, type ChapterEntry } from "./loader";
+export { loadBooks, compileChapter, ContentError, type BookEntry, type ChapterEntry, type CompileDependency } from "./loader";
 export {
   renderMarkdown,
   renderHtml,
@@ -230,6 +264,45 @@ export {
   type PipelineOptions,
 } from "./pipeline";
 export { sanitizeHtml } from "./sanitize";
+export {
+  rehypeImages,
+  checkImageUrl,
+  classifyImageUrl,
+  hostAllowed,
+  parseDataUri,
+  parseSrcset,
+  stringifySrcset,
+  measureFile,
+  probeRemoteImage,
+  formatBytes,
+  type ImagePipelineOptions,
+  type ImageDimensions,
+  type ImageUrlKind,
+  type ResolvedLocalImage,
+} from "./images";
+export { htmlToReact, type HtmlToReactOptions } from "./react";
+export {
+  rehypeMath,
+  rehypeMathDelimiters,
+  getMathRenderer,
+  resolveMath,
+  toMathElement,
+  MathEngineMissingError,
+  MATH_PACKAGES,
+  type MathRenderer,
+  type RehypeMathOptions,
+} from "./math";
+export {
+  resolveBookAsset,
+  serveAsset,
+  matchAssetRoute,
+  assetUrl,
+  ASSET_TYPES,
+  SVG_CSP,
+  type BookAssetContext,
+  type AssetRouteMatch,
+  type ServeAssetOptions,
+} from "./assets";
 export { rehypeBlocks, type BlockInfo, type BlocksData } from "../rehype/index";
 export { hashString } from "../core/blocks";
 export { glob, defineConfig, z } from "../config/index";
@@ -239,6 +312,11 @@ export type {
   ResolvedShelf,
   BookshelfConfig,
   SanitizeOptions,
+  ImageOptions,
+  AssetOptions,
+  MathOption,
+  MathEngine,
+  MathConfig,
   ContentConfig,
   GlobLoader,
 } from "../config/index";

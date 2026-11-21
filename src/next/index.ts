@@ -14,7 +14,7 @@ export const USER_CONFIG_SPECIFIER = "zreader/user-config";
 export const EMPTY_CONFIG_SPECIFIER = "zreader/empty-config";
 
 /** Packages that must stay external on the server (dynamic requires / native-ish). */
-export const SERVER_EXTERNALS = ["jsdom", "isomorphic-dompurify"];
+export const SERVER_EXTERNALS = ["jsdom", "isomorphic-dompurify", "@mathjax/src"];
 
 export interface WithReaderOptions {
   /** Path to the config file. Defaults to discovering reader.config.{ts,mts,mjs,js}. */
@@ -79,6 +79,7 @@ export function applyReaderConfig(base: NextConfig, setup: ReaderNextSetup, root
 
   return {
     ...base,
+    images: readerImagesConfig(base.images, resolved),
     serverExternalPackages: externals,
     outputFileTracingIncludes: tracing,
     turbopack: {
@@ -90,6 +91,44 @@ export function applyReaderConfig(base: NextConfig, setup: ReaderNextSetup, root
     },
     webpack,
   };
+}
+
+type NextImagesConfig = NonNullable<NextConfig["images"]>;
+type RemotePattern = Exclude<NonNullable<NextImagesConfig["remotePatterns"]>[number], URL>;
+
+/**
+ * Hosts in `content.images.allowRemote` (when it is a list) become
+ * `images.remotePatterns`, so next/image can optimize them. `allowRemote: true`
+ * adds nothing: those images render `unoptimized` rather than turning the image
+ * optimizer into an open proxy.
+ */
+export function readerImagesConfig(base: NextConfig["images"], resolved: ResolvedReaderConfig): NextConfig["images"] {
+  const hosts = new Set<string>();
+  for (const s of resolved.shelves) {
+    const allow = s.content.images.allowRemote;
+    if (Array.isArray(allow)) for (const h of allow) hosts.add(h.toLowerCase().replace(/^\*\./, ""));
+  }
+  // With no localPatterns every local path is allowed; once the app lists some,
+  // book assets must be listed too.
+  let localPatterns = base?.localPatterns;
+  if (localPatterns) {
+    const add = resolved.shelves.map((s) => ({ pathname: `${s.basePath.replace(/\/+$/, "")}/*/${s.content.assets.route}/**` }));
+    localPatterns = [...localPatterns, ...add.filter((a) => !localPatterns!.some((p) => p.pathname === a.pathname))];
+  }
+  if (!hosts.size) return localPatterns ? { ...base, localPatterns } : base;
+  const existing = base?.remotePatterns ?? [];
+  const added: RemotePattern[] = [];
+  const has = (p: RemotePattern) =>
+    [...existing, ...added].some((e) => !(e instanceof URL) && e.hostname === p.hostname && e.protocol === p.protocol && !e.pathname);
+  for (const h of hosts) {
+    for (const protocol of ["https", "http"] as const) {
+      for (const hostname of [h, `**.${h}`]) {
+        const p: RemotePattern = { protocol, hostname };
+        if (!has(p)) added.push(p);
+      }
+    }
+  }
+  return { ...base, ...(localPatterns ? { localPatterns } : {}), remotePatterns: [...existing, ...added] };
 }
 
 export async function setupReader(options: WithReaderOptions = {}): Promise<ReaderNextSetup> {

@@ -14,7 +14,7 @@ import type { AgentPlugin, AgentPluginContext, AgentPluginRoute } from "./types"
 
 /** The MCP revision implemented here. */
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
-const SERVER_VERSION = "0.3.0";
+const SERVER_VERSION = "0.4.0";
 
 /** One hit of the default BM25 search. */
 export interface SearchHit {

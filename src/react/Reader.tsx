@@ -18,6 +18,7 @@ import {
   quoteToMarkdown,
   supportsHighlightApi,
   BLOCK_ATTR,
+  blockText,
   type BookMeta,
   type ChapterMeta,
   type PadScopeKind,
@@ -35,6 +36,7 @@ import { HighlightPanel } from "./components/highlight-panel";
 import { ScratchpadPanel, scopeFor } from "./components/scratchpad-panel";
 import { SelectionToolbar } from "./components/selection-toolbar";
 import { SettingsPanel } from "./components/settings-panel";
+import { ImageViewer, useImageViewer } from "./components/image-viewer";
 import { useBook, useBookmarks, useIsDesktop, useLibrary, useProgress, useReader, useSettings, type HeaderSlot, type HrefFor } from "./context";
 import { copyText } from "./download";
 import type { LinkComponent } from "./link";
@@ -75,6 +77,8 @@ export interface ReaderProps {
   actions?: ReactNode;
   /** Where the back button goes. Defaults to the book page. */
   backHref?: string;
+  /** Open block images (`data-zr-zoom`) in a full-screen viewer. Default `true`. */
+  lightbox?: boolean;
   className?: string;
 }
 
@@ -189,6 +193,7 @@ export function Reader({
   header,
   actions,
   backHref,
+  lightbox = true,
   className,
 }: ReaderProps) {
   const { store, options } = useReader();
@@ -237,6 +242,8 @@ export function Reader({
       setOpenHighlightId(id);
     },
   });
+
+  const viewer = useImageViewer(rootEl, lightbox);
 
   // Prefer the build-time TOC; otherwise use the headings found in the rendered content.
   const toc = tocProp && tocProp.length > 0 ? tocProp : engine.domToc;
@@ -308,7 +315,7 @@ export function Reader({
     store.addBookmark({
       bookId: book.id,
       chapterId: chapter.id,
-      ...(block ? { blockId: block.getAttribute(BLOCK_ATTR) ?? undefined, excerpt: block.textContent?.trim().slice(0, 120) } : {}),
+      ...(block ? { blockId: block.getAttribute(BLOCK_ATTR) ?? undefined, excerpt: blockText(block).slice(0, 120) } : {}),
       label: chapter.title,
     });
     toast.success("Bookmarked", { description: "Find it under Contents → Bookmarks." });
@@ -501,6 +508,8 @@ export function Reader({
           </DrawerContent>
         </Drawer>
       )}
+
+      <ImageViewer image={viewer.image} onClose={viewer.close} returnFocus={viewer.trigger} />
 
       <SelectionToolbar
         selection={openHighlightId || settingsOpen || contentsOpen ? null : engine.selection}

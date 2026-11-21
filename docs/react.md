@@ -26,6 +26,7 @@ import "zreader/styles.css";
 | --- | --- | --- | --- |
 | `books` | `BookMeta[]` | `[]` | The [catalogue](./concepts.md#the-catalogue). Lets every component work from ids |
 | `Link` | component with `href` | `<a>` | Router link used by every component (`next/link`, a React Router wrapper, …) |
+| `Image` | component with `{ src, alt, className, sizes }` | `<img>` | Renders book covers; should fill a `relative` box (`next/image` with `fill` under `NextReaderProvider`) |
 | `hrefFor` | `(bookId, chapterId?, hash?) => string` | `${basePath}/${book}/${chapter}#hash` | URL builder used everywhere |
 | `headerSlot` | node, string, or `({ book, chapter }) => node` | `<ReaderTitle />` | Middle of the reader's top bar |
 | `readerActions` | node | — | Buttons on the right of the top bar, before the bookmark toggle |
@@ -35,6 +36,7 @@ import "zreader/styles.css";
 | `toaster` | boolean | `true` | Render a sonner `<Toaster>`. Set `false` if your app already has one |
 | `adapter` | `StorageAdapter` | `localStorage` | Custom storage (see [Reader features](./reader-features.md#storage)) |
 | `store` | `ReaderStore` | — | Provide your own store (tests, advanced) |
+| `blobStore` | `BlobStore` | IndexedDB | Where images readers add are kept (see [Reader images](./reader-features.md#reader-images)) |
 | `onStorageError` | `(error) => void` | `console.warn` | Called on quota and write errors |
 
 Component props always win over the provider: `Link`, `hrefFor`, `books`, `header` and `actions` can be passed per component.
@@ -50,6 +52,9 @@ Component props always win over the provider: `Link`, `hrefFor`, `books`, `heade
 | `<Reader book="id" chapter="id">…</Reader>` | ids, plus the chapter content | The full reader (see below) |
 | `<ReaderTitle />` | inside `<Reader>` | The default header: book title over chapter title |
 | `<Callout title="…">…</Callout>` | — | A note box for MDX chapters; ignored by highlighting |
+| `<ZImage>` | `<img>` props | A lazy, async-decoded `<img>` for MDX components or `htmlToReact` (see [Images](./images.md#plain-react)) |
+| `<BookCover book>` | `book`, `className`, `sizes` | A book's cover in a 2:3 box, through the provider's `Image` |
+| `<ImageViewer>`, `useImageViewer(root)` | | The full-screen image viewer and the hook that opens it for `img[data-zr-zoom]` inside `root` |
 
 `embedded` drops the full-page shell (background, padding, title block) so the shelf or contents page can sit inside your own layout.
 
@@ -77,6 +82,7 @@ The building blocks (`ContentsSheet`, `HighlightPanel`, `SelectionToolbar`, `Set
 | `header` | like `headerSlot` | Overrides the provider's header for this chapter |
 | `actions` | node | Replaces the provider's `readerActions` for this chapter; `null` hides them |
 | `backHref` | string | Where the back button goes. Default: the book's contents page |
+| `lightbox` | boolean | Open block images (`img[data-zr-zoom]`) in the full-screen [viewer](./images.md#the-viewer). Default `true` |
 | `Link`, `hrefFor` | | Override the provider's |
 | `className` | string | |
 

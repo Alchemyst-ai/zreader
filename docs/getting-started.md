@@ -115,7 +115,7 @@ const agent = createAgentHandler({ origin: "https://press.example.com" });
 export async function proxy(req: Request) {
   return (await agent(req)) ?? NextResponse.next();
 }
-export const config = { matcher: ["/books/:path*.md", "/books.md", "/books/llms.txt"] };
+export const config = { matcher: ["/books/:path*.md", "/books.md", "/books/llms.txt", "/books/:book/_assets/:path*"] };
 ```
 
 ```ts

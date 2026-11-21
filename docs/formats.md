@@ -17,6 +17,7 @@ A chapter is shown in two places: the **reader page**, which renders the chapter
 **Reader page**
 
 - GFM: tables, task lists, strikethrough, autolinks, footnotes.
+- With [`content.math`](./math.md), `$…$`, `$$…$$` and ```` ```math ```` blocks render as MathML.
 - Inline HTML is parsed, then the whole output is sanitized (see [Content layer → Security](./content.md#security)).
 - Headings get slug ids; `h2`–`h3` go into the chapter's contents list.
 
@@ -38,6 +39,7 @@ A chapter is shown in two places: the **reader page**, which renders the chapter
 | JSX inside a code block | Shown as code | Kept as code |
 | `import` / `export` lines | Run | Removed |
 | `{expressions}`, `{/* comments */}` | Evaluated | Removed, with any text they would produce. `## Version {v}` → `## Version`; `a {x} b` → `a b` |
+| `$…$`, `$$…$$` math | With [`content.math`](./math.md): MathML. Without it, braces inside are still parsed as expressions | Kept as TeX, braces included |
 | `<Callout title="Note">…</Callout>` (one line or many) | `Callout` component | A blockquote: `> **Note**` then the content |
 | Other components with children (`<Tabs>`, `<Steps>`, `<Kbd>`, `<details>`) | Your component | Replaced by their children. Props and attributes are dropped (`<Tabs label="Pick one">` loses "Pick one") |
 | Self-closing components (`<Chart data={…} />`, `<Badge />`) | Your component | Removed entirely: anything they render has no Markdown source |
@@ -58,13 +60,14 @@ If a component carries content agents need (a diagram's caption, a table generat
 
 ## HTML (`.html`)
 
-**Reader page:** sanitized with DOMPurify. Removed: scripts, event handlers, `javascript:` URLs, inline styles, `<style>`, forms, `<object>`, `<embed>`, and iframes except allow-listed `https` hosts. Frontmatter at the top of the file works as in Markdown.
+**Reader page:** sanitized with DOMPurify. Removed: scripts, event handlers, `javascript:` URLs, inline styles, `<style>`, forms, `<object>`, `<embed>`, inline `<svg>` (unless `sanitize.svg`), MathML (unless [math](./math.md) is on), and iframes except allow-listed `https` hosts. With math on, `\(…\)`, `\[…\]` and `$$…$$` are rendered. Frontmatter at the top of the file works as in Markdown.
 
 **`.md` twin:** converted with rehype-remark to GFM:
 
 - Headings, paragraphs, emphasis, lists, links, images, tables and code blocks (with their language from `class="language-…"`) are converted.
 - Scripts and styles are dropped.
 - `<embed>`, `<iframe>` and `<object>` become links to their files.
+- `<math>` with a TeX annotation becomes `$tex$` / `$$tex$$`.
 - Layout-only markup (`<div>`, `<span>`) is unwrapped.
 
 ## PDF
@@ -111,5 +114,6 @@ To get highlights, progress, search by agents and a real `.md` twin, **convert t
 
 ## Images and other assets
 
-- Images in Markdown (`![alt](/images/x.png)`), HTML and MDX render normally and stay as Markdown images in the twin.
-- Files inside `content/books/` are not served by zreader. Put assets in your app's public folder and reference them by URL.
+- Images in Markdown (`![alt](./images/x.png)`), HTML and MDX render in the reader from files next to the chapter, URLs or base64 data URIs. See [Images](./images.md) for the rules, sizes, captions and the viewer.
+- Relative paths are rewritten to `{basePath}/{book}/_assets/{hash}/…` and served by zreader. Root-relative URLs (`/img/x.png`) are left for your `public/` folder.
+- In the `.md` twin, images stay as Markdown images. `.md` twins keep the source as written, so a relative path there is relative to the chapter file, not to the asset URL.

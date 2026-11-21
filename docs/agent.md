@@ -373,12 +373,14 @@ export async function proxy(req: Request) {
 
 export const config = {
   matcher: [
-    "/books.md", "/books/:path*.md", "/books/llms.txt", "/books/llms-full.txt",
-    "/reports.md", "/reports/:path*.md", "/reports/llms.txt", "/reports/mcp",
+    "/books.md", "/books/:path*.md", "/books/llms.txt", "/books/llms-full.txt", "/books/:book/_assets/:path*",
+    "/reports.md", "/reports/:path*.md", "/reports/llms.txt", "/reports/mcp", "/reports/:book/_assets/:path*",
     "/llms.txt", "/llms-full.txt",
   ],
 };
 ```
+
+The `_assets` entries serve [images next to chapters](./images.md#images-next-to-chapters); the handler answers them too (`createAgentHandler({ assets: false })` turns that off).
 
 On **Next 15.5**, name the file `middleware.ts`, export the function as `middleware`, and add `runtime: "nodejs"` to `config`. The handler reads files from disk, so it can't run on the Edge runtime.
 

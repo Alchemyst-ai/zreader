@@ -1,0 +1,17 @@
+export const meta = { title: "Welcome", description: "What this example shows." };
+
+This chapter is an MDX file compiled by Vite. Select any sentence to **highlight** it, add a note, or quote it into the scratchpad. Everything you do is saved in this browser.
+
+<Callout title="Try it">
+  Switch on highlight mode in the top bar, then tap a sentence. Open **Aa** to change the theme, text size and font.
+</Callout>
+
+## Where things live
+
+- The catalogue (`src/books/index.ts`) is built from `book.json` files and the chapters next to them.
+- Routing is React Router; the reader uses its `Link` through `ReaderProvider`.
+- Styling comes from your shadcn tokens via `zreader/tailwind.css`.
+
+## Bookmarks and progress
+
+Press the bookmark button to remember the block at the top of the screen. Scroll to the end and the chapter is marked as read on the book page.

@@ -11,7 +11,7 @@ content/books/
     01-intro.md                      ← chapter id: "intro"
     02-appendix-a-api-endpoint-reference.mdx
     03-changelog.html
-    images/diagram.png               ← ignored (not a chapter format)
+    images/diagram.png               ← not a chapter; served when a chapter uses it
   field-guide/
     book.json
     01-start.md
@@ -19,7 +19,7 @@ content/books/
 
 - Every folder directly under the content base is a book. Files sitting at the base itself (not in a book folder) are ignored.
 - Chapter files can be nested inside the book folder (`context-infra/part-1/01-intro.md`); the book is always the first folder.
-- Chapter formats: `.md` (Markdown), `.mdx` (MDX) and `.html` (HTML). `.markdown` and `.htm` are recognised too, but the default pattern (`**/*.{md,mdx,html}`) doesn't match them; widen `loader.pattern` to include them. Any other file, including PDFs and images, is skipped even if the pattern matches it. See [Formats](./formats.md).
+- Chapter formats: `.md` (Markdown), `.mdx` (MDX) and `.html` (HTML). `.markdown` and `.htm` are recognised too, but the default pattern (`**/*.{md,mdx,html}`) doesn't match them; widen `loader.pattern` to include them. Any other file, including PDFs and images, is never a chapter, even if the pattern matches it. Images a chapter references are served as [assets](./images.md#images-next-to-chapters). See [Formats](./formats.md).
 - The base folder is `./content/books` by default. Change it with `content.loader` in [`reader.config.ts`](./configuration.md#content).
 
 ## Ids
@@ -52,7 +52,7 @@ Ids appear in URLs and in readers' storage keys: renaming a file changes its URL
 | `subtitle` | string | — | |
 | `authors` | string[] | `[]` | |
 | `description` | string | — | Shown on the shelf and used by `llms.txt` |
-| `cover` | string | — | Image URL for the shelf card |
+| `cover` | string | — | Cover image: a URL, or a path relative to `book.json` (`./cover.png`), served as an asset. Shown on the shelf card and contents page |
 | `chapters` | string[] | — | Explicit chapter order by id (see below) |
 
 Without `book.json`, the title is the folder name in title case (`field-guide` → `Field Guide`). Extra keys are kept and available as `book.data`. Invalid JSON or a failed validation throws a `ContentError` with the file path.
@@ -151,14 +151,14 @@ It gains no plugins and is not traced by `withReader`. For anything served over 
 - **Markdown** goes through remark (GFM), your `remarkPlugins`, remark-rehype, rehype-raw (inline HTML), your `rehypePlugins`, then DOMPurify, then block ids.
 - **HTML** goes through DOMPurify, then block ids.
 - **MDX** is compiled with `@mdx-js/mdx` (GFM, your plugins, then block ids) to a function body and run on the server. MDX is code and is **not** sanitized.
-- Compiled chapters are cached in memory and on disk under `content.cacheDir` (default `node_modules/.cache/zreader`; `withReader` uses `.next/cache/zreader`). The cache key covers the file, its contents, the sanitize options and the plugin names, so edits and config changes recompile. The disk cache is best-effort and silently skipped on read-only file systems.
+- Compiled chapters are cached in memory and on disk under `content.cacheDir` (default `node_modules/.cache/zreader`; `withReader` uses `.next/cache/zreader`). The cache key covers the file, its contents, the sanitize, image, asset and math options, the shelf's `basePath` and the plugin names, so edits and config changes recompile. Images next to the chapter are checked too: in development, a changed image recompiles the chapter. The disk cache is best-effort and silently skipped on read-only file systems.
 - A chapter that fails to compile throws `ContentError: Failed to compile chapter: …` with the file path.
 
 ## Security
 
 Markdown (including inline HTML) and HTML chapters are sanitized with DOMPurify:
 
-- Removed: scripts, event handlers, `javascript:` URLs, inline `style` attributes, `srcset`, `<style>`, forms and form controls (task-list checkboxes are kept, disabled), `<object>`, `<embed>`, `<base>`, `<link>`, `<meta>`, and any `data-block-id` you wrote yourself.
+- Removed: scripts, event handlers, `javascript:` URLs, inline `style` attributes, inline `<svg>` (unless `sanitize.svg`), MathML (unless `content.math` is on), `<style>`, forms and form controls (task-list checkboxes are kept, disabled), `<object>`, `<embed>`, `<base>`, `<link>`, `<meta>`, and any `data-block-id` you wrote yourself.
 - Iframes are removed unless their `src` is `https` and its host is listed in `content.sanitize.allowIframes` (subdomains included). Allowed iframes get `sandbox="allow-scripts allow-same-origin allow-presentation"` and `loading="lazy"`.
 - Links with `target="_blank"` get `rel="noopener noreferrer"`; other `target` values are removed.
 - Extend the allow-list with `sanitize.allowTags` and `sanitize.allowAttributes`.

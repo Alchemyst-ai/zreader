@@ -56,7 +56,7 @@ export interface ChapterEngineOptions {
   onHighlightTap?: (id: string) => void;
 }
 
-const INTERACTIVE = `a,button,input,textarea,select,summary,label,video,audio,iframe,[contenteditable],[${IGNORE_ATTR}]`;
+const INTERACTIVE = `a,button,input,textarea,select,summary,label,video,audio,iframe,img[data-zr-zoom],[contenteditable],[${IGNORE_ATTR}]`;
 
 function prefersReducedMotion() {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;

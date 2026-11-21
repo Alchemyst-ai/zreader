@@ -4,12 +4,16 @@ import rehypeParse from "rehype-parse";
 import rehypeRaw from "rehype-raw";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified, type PluggableList } from "unified";
 import type { ComponentType } from "react";
 import type { SanitizeOptions } from "../config/index";
 import { rehypeBlocks, type BlocksData } from "../rehype/index";
+import { rehypeImages, type ImagePipelineOptions } from "./images";
+import { rehypeMath, rehypeMathDelimiters, resolveMath } from "./math";
+import type { MathOption } from "../config/index";
 import { sanitizeHtml } from "./sanitize";
 
 export type ChapterFormat = "md" | "mdx" | "html";
@@ -18,6 +22,29 @@ export interface PipelineOptions {
   sanitize?: SanitizeOptions;
   remarkPlugins?: PluggableList;
   rehypePlugins?: PluggableList;
+  /** Image policy, sizes and captions (`rehypeImages`). `false` skips it. Defaults to `content.images` defaults. */
+  images?: ImagePipelineOptions | false;
+  /** TeX math (`content.math`). Off when omitted or `false`. */
+  math?: MathOption;
+}
+
+function imagePlugins(opts: PipelineOptions): PluggableList {
+  return opts.images === false ? [] : [[rehypeImages, opts.images ?? {}]];
+}
+
+function mathPlugins(opts: PipelineOptions, html: boolean): PluggableList {
+  const math = resolveMath(opts.math);
+  if (!math) return [];
+  const source = opts.images ? opts.images.source : undefined;
+  return [...(html ? [rehypeMathDelimiters] : []), [rehypeMath, { math, source }]] as PluggableList;
+}
+
+function remarkMathPlugins(opts: PipelineOptions): PluggableList {
+  return resolveMath(opts.math) ? [remarkMath] : [];
+}
+
+function sanitizeFor(html: string, opts: PipelineOptions): string {
+  return sanitizeHtml(html, opts.sanitize, { mathMl: resolveMath(opts.math) != null });
 }
 
 export interface HtmlResult extends BlocksData {
@@ -31,10 +58,16 @@ export interface MdxCompiled extends BlocksData {
   code: string;
 }
 
-/** Add block ids / heading ids / TOC to already-sanitized HTML. */
-export async function annotateHtml(html: string): Promise<HtmlResult> {
+/** Add math, images, block ids / heading ids / TOC to already-sanitized HTML. */
+export async function annotateHtml(html: string, opts: PipelineOptions = {}): Promise<HtmlResult> {
+  return annotate(html, opts, false);
+}
+
+async function annotate(html: string, opts: PipelineOptions, htmlDelimiters: boolean): Promise<HtmlResult> {
   const file = await unified()
     .use(rehypeParse, { fragment: true })
+    .use(mathPlugins(opts, htmlDelimiters))
+    .use(imagePlugins(opts))
     .use(rehypeBlocks)
     .use(rehypeStringify)
     .process(html);
@@ -43,7 +76,7 @@ export async function annotateHtml(html: string): Promise<HtmlResult> {
 
 /** Untrusted HTML string → sanitized, annotated HTML. */
 export async function renderHtml(html: string, opts: PipelineOptions = {}): Promise<HtmlResult> {
-  return annotateHtml(sanitizeHtml(html, opts.sanitize));
+  return annotate(sanitizeFor(html, opts), opts, true);
 }
 
 /**
@@ -54,13 +87,14 @@ export async function renderMarkdown(markdown: string, opts: PipelineOptions = {
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(remarkMathPlugins(opts))
     .use(opts.remarkPlugins ?? [])
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(opts.rehypePlugins ?? [])
     .use(rehypeStringify)
     .process(markdown);
-  return renderHtml(String(file), opts);
+  return annotate(sanitizeFor(String(file), opts), opts, false);
 }
 
 /**
@@ -71,8 +105,8 @@ export async function compileMdx(source: string, opts: PipelineOptions = {}): Pr
   const file = await compile(source, {
     outputFormat: "function-body",
     development: false,
-    remarkPlugins: [remarkGfm, ...(opts.remarkPlugins ?? [])],
-    rehypePlugins: [...(opts.rehypePlugins ?? []), rehypeBlocks],
+    remarkPlugins: [remarkGfm, ...remarkMathPlugins(opts), ...(opts.remarkPlugins ?? [])],
+    rehypePlugins: [...(opts.rehypePlugins ?? []), ...mathPlugins(opts, false), ...imagePlugins(opts), rehypeBlocks],
   });
   return { kind: "mdx", code: String(file), ...(file.data as { reader: BlocksData }).reader };
 }

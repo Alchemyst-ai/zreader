@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.4.0
+
+**Images.** Chapters can show images from files next to the chapter, URLs and base64 data URIs, in `.md`, `.mdx` and `.html`. See [Images](./docs/images.md).
+
+- **Images next to chapters:** `![x](./images/x.png)` is rewritten to `{basePath}/{book}/_assets/{hash}/images/x.png` and served with immutable caching. `createAgentHandler()` serves these URLs. Without the proxy, use `assetRoute()` from `zreader/next/server` or `createAssetHandler()` from `zreader/content`. Refused: paths outside the book folder, symlinks pointing out of it, hidden files, and extensions not in `content.assets.extensions`. SVG is sent with a strict CSP.
+- **New `content.images` options:** a remote host allowlist (`allowRemote`) and base64 limits: `maxDataUriBytes` (8 MB), `maxDataUriTotalBytes`, and a 2 MB warning in development. `probeRemote` is off by default. Images that aren't allowed are dropped with a warning that names the chapter.
+- **Sizes:** images are measured at compile time (book files, `public/`, base64) and get `width`/`height`, `loading="lazy"` and `decoding="async"`.
+- **Responsive images:** `srcset`, `sizes` and `<picture><source>` are kept, and each candidate is checked against the same rules as `src`.
+- **Captions:** a lone titled image becomes a `<figure>` with a `<figcaption>`.
+- **Next.js:** `ReaderChapter` renders Markdown and HTML chapters as React, so images go through `next/image`. That's optimized for local files and listed hosts, and `unoptimized` for base64, SVG and unlisted hosts. `withReader` adds `allowRemote` hosts to `images.remotePatterns`. Outside Next.js, images stay plain `<img>`, and `ZImage` and `htmlToReact` are available.
+- **Viewer:** tapping a block image opens a full-screen view built on Radix Dialog, with pinch, wheel and double-tap zoom, panning, keyboard controls and swipe to close. `content.images.lightbox` and `<Reader lightbox>` turn it off.
+- **Bookmarks and progress:** image-only paragraphs and caption-less figures now get block ids, so you can bookmark them and resume reading at them.
+- **Covers:** `book.cover` is shown on the shelf and the contents page. A relative cover in `book.json` is served as an asset. Covers render through the provider's new `Image` prop, which `NextReaderProvider` sets to `next/image`.
+- **Inline SVG:** opt in with `sanitize.svg: true`.
+
+**Math.** `content.math: "katex" | "temml" | "mathjax"` renders TeX as MathML with the engine you install (an optional peer dependency). It handles `$…$`, `$$…$$` and ```` ```math ```` in Markdown and MDX, and `\(…\)`, `\[…\]` and `$$…$$` in HTML. Display math is its own block. In MDX, braces inside `$…$` are no longer evaluated as JavaScript. MathML you write yourself is kept while math is on. `.md` twins keep the TeX. See [Math](./docs/math.md).
+
+**Reader images.** Readers can paste, drop or insert images into the scratchpad and into highlight notes. The images are stored in IndexedDB as `zr-blob:<id>`, with per-image limits (`reader.userImages`), usage shown in settings, and **Remove unused images**. Backups embed the images (format v2); a backup without images is still written as v1.
+
+**Offline reading (opt-in).** With `reader.offline.enabled`, book pages get **Save for offline**, backed by the service worker from the new `zreader/sw` entry (`serviceWorkerRoute()` in `zreader/next/server`). See [Offline reading](./docs/reader-features.md#offline-reading).
+
+### Migrating to 0.4
+
+See also the [production checklist](./docs/production-checklist.md).
+
+| Change | Migration |
+| --- | --- |
+| Images next to chapters are served at `{basePath}/:book/_assets/:path*` | Add that entry to the `matcher` in `proxy.ts` (`agentMatcher(shelf)` lists it), or add `assetRoute()` |
+| `ReaderChapter` renders Markdown/HTML chapters as React instead of an `html` string | None. `components` now also apply to them by tag name, including `img` |
+| Image-only paragraphs and caption-less figures get block ids; `figure` is a block tag | Chapters with images get a new `contentHash`. Highlights re-anchor by their quote as usual |
+| A lone image with a title becomes a `<figure>` | Set `content.images.captions: false` to keep the old markup |
+| `srcset` is no longer removed | None |
+| Compiled-chapter cache version bumped | Chapters recompile once |
+| `annotateHtml(html, opts?)` also runs `rehypeImages` | Pass `{ images: false }` to skip it |
+| MDX `.md` twins parse `$…$` as math, so braces between dollar signs are kept, not removed | None |
+| `ReaderClientOptions` gains `userImages` and `offline` | Only affects code that builds the object by hand; `mergeOptions` and `resolveConfig` fill the defaults |
+| `BACKUP_VERSION` is `2` | v1 backups still import |
+
+New dependencies: `image-size`, `remark-math`, `hast-util-to-jsx-runtime`, `unist-util-visit-parents`. New optional peers: `katex`, `temml` and `@mathjax/src`.
+
 ## 0.3.0
 
 **Bookshelves.** `defineConfig({ bookshelves: [...] })` declares one or more shelves, each with its own content folder, `basePath` and agent plugins. Every zreader surface — the agent handler, `ReaderRoot`, `ReaderChapter`, the static params helpers and `withReader` tracing — reads shelves from the same config. Shelves are never nested: one route each.

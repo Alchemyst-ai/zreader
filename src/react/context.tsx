@@ -12,6 +12,10 @@ import {
   DEFAULT_CLIENT_OPTIONS,
   createLocalStorageAdapter,
   createReaderStore,
+  createBlobStore,
+  parseBlobUrl,
+  type BlobStore,
+  type BlobUsage,
   type Cell,
   type ReaderStore,
   type StorageAdapter,
@@ -25,7 +29,7 @@ import {
 } from "zreader";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { BookMeta } from "zreader";
-import { DefaultLink, defaultHref, type LinkComponent } from "./link";
+import { DefaultImage, DefaultLink, defaultHref, type ImageComponent, type LinkComponent } from "./link";
 import { Toaster } from "@/components/ui/sonner";
 
 type DeepPartial<T> = T extends unknown[] ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
@@ -61,6 +65,8 @@ export interface Library {
   books: BookMeta[];
   getBook(id: string): BookMeta | undefined;
   Link: LinkComponent;
+  /** Renders book covers. Defaults to <img>; next/image under `zreader/next/client`. */
+  Image: ImageComponent;
   href: HrefFor;
   headerSlot?: HeaderSlot;
   readerActions?: ReactNode;
@@ -68,6 +74,8 @@ export interface Library {
 
 interface ReaderContextValue {
   store: ReaderStore;
+  /** Images readers add (IndexedDB). */
+  blobs: BlobStore;
   options: ReaderClientOptions;
   library: Library;
 }
@@ -86,6 +94,8 @@ export interface ReaderProviderProps {
   /** Provide your own store (advanced; e.g. tests). */
   store?: ReaderStore;
   onStorageError?: (error: unknown) => void;
+  /** Where reader-added images are kept. Defaults to IndexedDB (`<storagePrefix>:blobs`). */
+  blobStore?: BlobStore;
   /**
    * Manage the colour theme with next-themes (class on <html>, no-flash script).
    * Set to `false` if your app already renders a next-themes <ThemeProvider>.
@@ -100,6 +110,8 @@ export interface ReaderProviderProps {
   books?: BookMeta[];
   /** Router link used by every component (e.g. next/link). Defaults to <a>. */
   Link?: LinkComponent;
+  /** Image component for book covers (e.g. next/image). Defaults to <img>. */
+  Image?: ImageComponent;
   /** URL builder. Defaults to `${basePath}/${bookId}/${chapterId}#hash`. */
   hrefFor?: HrefFor;
   /**
@@ -122,10 +134,12 @@ export function ReaderProvider({
   adapter,
   store: external,
   onStorageError,
+  blobStore,
   manageTheme = true,
   toaster = true,
   books,
   Link,
+  Image,
   hrefFor,
   headerSlot,
   readerActions,
@@ -143,6 +157,7 @@ export function ReaderProvider({
       createReaderStore({ adapter: adapter ?? createLocalStorageAdapter(), options: resolved, onError: onStorageError }),
   );
   useEffect(() => store.connect(), [store]);
+  const [blobs] = useState<BlobStore>(() => blobStore ?? createBlobStore(resolved.storagePrefix));
   const library = useMemo<Library>(() => {
     const list = books ?? [];
     const byId = new Map(list.map((b) => [b.id, b]));
@@ -150,12 +165,13 @@ export function ReaderProvider({
       books: list,
       getBook: (id) => byId.get(id),
       Link: Link ?? DefaultLink,
+      Image: Image ?? DefaultImage,
       href: hrefFor ?? ((b, c, h) => defaultHref(resolved.basePath, b, c, h)),
       headerSlot,
       readerActions,
     };
-  }, [books, Link, hrefFor, headerSlot, readerActions, resolved.basePath]);
-  const value = useMemo(() => ({ store, options: resolved, library }), [store, resolved, library]);
+  }, [books, Link, Image, hrefFor, headerSlot, readerActions, resolved.basePath]);
+  const value = useMemo(() => ({ store, blobs, options: resolved, library }), [store, blobs, resolved, library]);
 
   // §10.3: outside its basePath every `hrefFor` link is wrong (a renamed
   // basePath without a renamed app/ folder). Development only, once per process.
@@ -230,6 +246,51 @@ export function useBook(book: BookMeta | string): BookMeta {
 
 export function useReaderStore(): ReaderStore {
   return useReader().store;
+}
+
+export function useBlobStore(): BlobStore {
+  return useReader().blobs;
+}
+
+/**
+ * Resolves `zr-blob:<id>` to an object URL (released on unmount); any other
+ * `src` is returned unchanged. `undefined` while loading, `null` when missing.
+ */
+export function useBlobUrl(src: string | null | undefined): string | null | undefined {
+  const blobs = useBlobStore();
+  const id = parseBlobUrl(src);
+  const [url, setUrl] = useState<string | null | undefined>(id ? undefined : (src ?? null));
+  useEffect(() => {
+    if (!id) {
+      setUrl(src ?? null);
+      return;
+    }
+    let live = true;
+    setUrl(undefined);
+    void blobs.url(id).then((u) => live && setUrl(u));
+    return () => {
+      live = false;
+      blobs.release(id);
+    };
+  }, [blobs, id, src]);
+  return url;
+}
+
+/** Image usage in IndexedDB, refreshed when images are added or removed. */
+export function useBlobUsage(): BlobUsage | null {
+  const blobs = useBlobStore();
+  const [usage, setUsage] = useState<BlobUsage | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () => void blobs.usage().then((u) => live && setUsage(u)).catch(() => {});
+    load();
+    const off = blobs.subscribe(load);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [blobs]);
+  return usage;
 }
 
 function useCell<T>(cell: Cell<T>, serverValue: T): T {

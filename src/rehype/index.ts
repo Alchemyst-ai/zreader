@@ -12,7 +12,7 @@ import { toString } from "hast-util-to-string";
 import type { Element, Root } from "hast";
 import { visit } from "unist-util-visit";
 import type { VFile } from "vfile";
-import { BLOCK_TAGS, createBlockIdAllocator, createSlugger, hashString, normalizeBlockText } from "../core/blocks";
+import { BLOCK_TAGS, createBlockIdAllocator, createSlugger, hashString, imageKey, mediaBlockText, normalizeBlockText } from "../core/blocks";
 import type { TocEntry } from "../core/types";
 
 const HEADING = /^h([1-6])$/;
@@ -28,6 +28,17 @@ export interface BlocksData {
   toc: TocEntry[];
   blocks: BlockInfo[];
   contentHash: string;
+}
+
+function mediaText(node: Element): string {
+  const keys: string[] = [];
+  visit(node, "element", (el: Element) => {
+    if (el.tagName !== "img") return;
+    const alt = typeof el.properties?.alt === "string" ? el.properties.alt : "";
+    const src = typeof el.properties?.src === "string" ? el.properties.src : "";
+    keys.push(imageKey(alt, src));
+  });
+  return mediaBlockText(keys);
 }
 
 function containsBlock(node: Element): boolean {
@@ -70,11 +81,13 @@ export function rehypeBlocks(options: RehypeBlocksOptions = {}) {
       }
 
       if (containsBlock(node)) return; // only innermost blocks are anchors
-      if (!text) return;
-      const id = allocate(node.tagName, text);
+      // Image-only blocks are anchored by their images (bookmarks, progress), never highlighted.
+      const key = text || mediaText(node);
+      if (!key) return;
+      const id = allocate(node.tagName, key);
       node.properties.dataBlockId = id;
-      blocks.push({ id, tag: node.tagName, excerpt: text.slice(0, 80) });
-      texts.push(text);
+      blocks.push({ id, tag: node.tagName, excerpt: key.slice(0, 80) });
+      texts.push(key);
     });
 
     const data: BlocksData = { toc, blocks, contentHash: hashString(texts.join("\n")) };
