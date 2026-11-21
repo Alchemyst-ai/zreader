@@ -7,6 +7,7 @@
 import { InputRule, Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { loadMathRenderer, type MathLoader, type MathRenderer } from "zreader";
+import { jsonHas } from "./features";
 
 /** `$x$`: no space inside the dollars, and the closing one not followed by a digit (`$5 and $6` is text). */
 export const INLINE_MATH = /^\$(?!\s)((?:\\.|[^\\$\n])+?)(?<!\s)\$(?!\d)/;
@@ -229,12 +230,11 @@ export function mathExtensions(loader: MathLoader) {
   return [inline, block];
 }
 
-type JsonNode = { type?: string; content?: JsonNode[] };
+export const MATH_NODE_TYPES = ["inlineMath", "blockMath"] as const;
 
 /** Does editor JSON contain math nodes? */
 export function jsonHasMath(json: unknown): boolean {
-  const walk = (n: JsonNode | undefined): boolean => !!n && (n.type === "inlineMath" || n.type === "blockMath" || (n.content ?? []).some(walk));
-  return walk(json as JsonNode);
+  return jsonHas(json, MATH_NODE_TYPES);
 }
 
 /** Does Markdown contain something the math tokenizers would turn into math? */
