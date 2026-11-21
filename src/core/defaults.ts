@@ -5,6 +5,8 @@ export const DEFAULT_CLIENT_OPTIONS: ReaderClientOptions = {
   highlightColors: ["yellow", "green", "blue", "pink"],
   defaultHighlightColor: "yellow",
   scratchpad: { enabled: true, scopes: ["chapter", "book", "global"] },
+  userImages: { enabled: true, maxBytes: 10 * 1024 * 1024 },
+  offline: { enabled: false, serviceWorker: "/zreader-sw.js" },
   themes: ["system", "light", "sepia", "dark"],
   defaultTheme: "system",
   defaultSettings: {

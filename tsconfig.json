@@ -54,6 +54,9 @@
       "zreader/rehype": [
         "./src/rehype/index.ts"
       ],
+      "zreader/sw": [
+        "./src/sw/index.ts"
+      ],
       "zreader/agent": [
         "./src/agent/index.ts"
       ],

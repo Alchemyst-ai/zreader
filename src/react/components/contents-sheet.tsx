@@ -12,6 +12,7 @@ import { useBookmarks, useHighlights, useProgress, useReaderStore } from "../con
 import type { LinkComponent } from "../link";
 import { chapterMarker, groupByPart } from "../parts";
 import { quoteBorderClass } from "../tokens";
+import { noteText } from "./blob-image";
 
 export type ContentsTab = "contents" | "highlights" | "bookmarks";
 
@@ -169,7 +170,7 @@ export function ContentsSheet(p: ContentsSheetProps) {
                             className={cn("flex-1 rounded-md border-l-4 bg-muted/40 px-3 py-2 text-sm transition-colors hover:bg-muted", quoteBorderClass(h.color))}
                           >
                             <span className="line-clamp-3 font-serif">{h.anchor.exact}</span>
-                            {h.note && <span className="mt-1 line-clamp-2 block text-muted-foreground">{h.note}</span>}
+                            {h.note && <span className="mt-1 line-clamp-2 block text-muted-foreground">{noteText(h.note)}</span>}
                             <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                               {dateFmt(h.updatedAt)}
                               {cid === chapterId && p.orphanedIds.has(h.id) && (

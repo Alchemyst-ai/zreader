@@ -16,12 +16,14 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import config from "zreader/virtual-config";
-import { getShelf, type MdxComponents } from "zreader/content";
+import { createAssetHandler, getShelf, htmlToReact, type MdxComponents } from "zreader/content";
 import { Callout, Reader, type ReaderProps, type ReaderProviderProps } from "zreader/react";
 import { NextReaderProvider } from "zreader/next/client";
 import { CopyReference, MarkdownAlternate, type BuiltInProvider } from "zreader/agent/react";
 import type { BookMeta } from "zreader";
 import type { ResolvedShelf } from "zreader/config";
+import { createReaderImage } from "./image";
+import { SW_HEADERS, serviceWorkerScript, type ServiceWorkerOptions } from "zreader/sw";
 
 /**
  * Default MDX components (built here, in a server module, so RSC pages get real
@@ -75,7 +77,7 @@ export interface ReaderRootProps
  */
 export function agentMatcher(shelf: ResolvedShelf): string[] {
   const base = shelf.basePath.replace(/\/+$/, "");
-  const out = [base ? `${base}.md` : "/index.md", `${base}/:path*.md`];
+  const out = [base ? `${base}.md` : "/index.md", `${base}/:path*.md`, `${base}/:book/${shelf.content.assets.route}/:path*`];
   for (const plugin of shelf.plugins) {
     for (const route of plugin.routes ?? []) {
       if (route.path === "*") continue;
@@ -149,7 +151,10 @@ export interface ReaderChapterProps extends Omit<ReaderProps, "book" | "chapter"
   chapter: string;
   /** Bookshelf id. Defaults to the first shelf in reader.config.ts. */
   shelf?: string;
-  /** Extra MDX components, merged over `mdxComponents`. */
+  /**
+   * Extra components, merged over `mdxComponents` and the `next/image` `img`.
+   * They apply to MDX chapters and, by tag name, to Markdown/HTML chapters.
+   */
   components?: MdxComponents;
   /** Top-bar content for this chapter only (overrides the provider's). */
   header?: ReactNode;
@@ -163,19 +168,22 @@ export async function ReaderChapter({ book, chapter, shelf, components, ...props
   const api = getShelf(shelf);
   const hit = await api.getChapter(book, chapter);
   if (!hit) notFound();
-  const rendered = await api.renderChapter(hit.chapter);
+  const [rendered, resolved] = await Promise.all([api.renderChapter(hit.chapter), api.shelf()]);
+  const all = { ...mdxComponents, img: imageFor(resolved), ...components } as MdxComponents;
+  // Markdown/HTML chapters are rendered as React so `img` can be next/image.
   return (
-    <Reader
-      {...props}
-      book={book}
-      chapter={chapter}
-      toc={rendered.toc}
-      contentHash={rendered.contentHash}
-      html={rendered.kind === "html" ? rendered.html : undefined}
-    >
-      {rendered.kind === "mdx" ? <rendered.Content components={{ ...mdxComponents, ...components } as MdxComponents} /> : null}
+    <Reader {...props} book={book} chapter={chapter} toc={rendered.toc} contentHash={rendered.contentHash}>
+      {rendered.kind === "mdx" ? <rendered.Content components={all} /> : htmlToReact(rendered.html, { components: all })}
     </Reader>
   );
+}
+
+const readerImages = new WeakMap<ResolvedShelf, ReturnType<typeof createReaderImage>>();
+
+function imageFor(shelf: ResolvedShelf) {
+  let c = readerImages.get(shelf);
+  if (!c) readerImages.set(shelf, (c = createReaderImage(shelf.content.images)));
+  return c;
 }
 
 /** `export const generateStaticParams = () => getBookParams("reports")` in `app/reports/[book]/page.tsx`. */
@@ -186,6 +194,31 @@ export async function getBookParams(shelf?: string): Promise<Array<{ book: strin
 /** `export const generateStaticParams = () => getChapterParams("reports")` in `app/reports/[book]/[chapter]/page.tsx`. */
 export async function getChapterParams(shelf?: string): Promise<Array<{ book: string; chapter: string }>> {
   return getShelf(shelf).getStaticParams();
+}
+
+/**
+ * Route handlers for book assets, for apps that do not use the agent proxy.
+ * The folder must be `%5Fassets` (Next.js hides folders starting with `_`):
+ *
+ *   // app/books/[book]/%5Fassets/[...path]/route.ts
+ *   export const { GET, HEAD } = assetRoute();
+ */
+export function assetRoute(shelf?: string) {
+  const handler = createAssetHandler(shelf ? { shelves: [shelf] } : { shelves: [config.shelves[0]!.id] });
+  const handle = async (request: Request) => (await handler(request)) ?? new Response("Not found", { status: 404 });
+  return { GET: handle, HEAD: handle };
+}
+
+/**
+ * The offline-reading service worker (`reader.offline.enabled`), served from the
+ * site root so it can control every shelf:
+ *
+ *   // app/zreader-sw.js/route.ts
+ *   export const { GET } = serviceWorkerRoute();
+ */
+export function serviceWorkerRoute(options: ServiceWorkerOptions = {}) {
+  const body = serviceWorkerScript(options);
+  return { GET: () => new Response(body, { headers: SW_HEADERS }) };
 }
 
 /** Client options for one shelf (defaults to the first). */
@@ -199,4 +232,5 @@ export function getClientOptions(shelf?: string) {
 }
 
 export { config as readerConfig };
+export { createReaderImage, imageDecision, type ReaderImageDecision } from "./image";
 export type { ResolvedShelf };

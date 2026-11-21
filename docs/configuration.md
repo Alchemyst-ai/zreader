@@ -144,10 +144,25 @@ Highlights, notes and progress are keyed by `storagePrefix` + book id, and two s
 | `schemas.book` | zod schema | see below | Validates `book.json` |
 | `schemas.chapter` | zod schema | see below | Validates chapter frontmatter |
 | `remarkPlugins` | unified plugins | `[]` | Applied to `.md` and `.mdx` |
-| `rehypePlugins` | unified plugins | `[]` | Applied to `.md` and `.mdx`, before block ids |
+| `rehypePlugins` | unified plugins | `[]` | Applied to `.md` and `.mdx`, before images and block ids. In `.md` they also run before sanitizing |
 | `sanitize.allowIframes` | string[] | `[]` | `https` iframe hosts to keep (subdomains included) |
 | `sanitize.allowTags` | string[] | `[]` | Extra tags allowed by DOMPurify |
 | `sanitize.allowAttributes` | string[] | `[]` | Extra attributes allowed by DOMPurify |
+| `sanitize.svg` | boolean | `false` | Keep inline `<svg>` in `.md`/`.html` chapters (DOMPurify's SVG profile) |
+| `images.allowRemote` | boolean \| string[] | `true` | Remote image URLs: any, none, or these hosts (subdomains included) |
+| `images.allowDataUri` | boolean | `true` | Inline `data:image/*;base64` images |
+| `images.maxDataUriBytes` | number | 8 MB | Largest inline image (decoded); larger ones are dropped with a warning |
+| `images.maxDataUriTotalBytes` | number | — | Largest total of inline images per chapter |
+| `images.warnDataUriTotalBytes` | number | 2 MB | Development warning threshold for inline images per chapter |
+| `images.allowSvgDataUri` | boolean | `false` | Allow `data:image/svg+xml` |
+| `images.probeRemote` | boolean | `false` | Fetch the start of remote images while compiling, to learn their size |
+| `images.probeTimeoutMs` | number | `3000` | Timeout per remote probe |
+| `images.lazy` | boolean | `true` | `loading="lazy"`, `decoding="async"` |
+| `images.lightbox` | boolean | `true` | Block images open in the full-screen viewer |
+| `images.captions` | boolean | `true` | A lone titled image becomes a `<figure>` with a caption |
+| `math` | `false` \| `"katex"` \| `"temml"` \| `"mathjax"` \| `{ engine, macros?, options? }` | `false` | TeX math, rendered as MathML. The engine is an optional dependency. See [Math](./math.md) |
+| `assets.route` | string | `"_assets"` | URL segment for files served from book folders |
+| `assets.extensions` | string[] | `png jpg jpeg gif webp avif svg` | File types served from book folders |
 | `includeDrafts` | boolean | `true` in development | Show `draft: true` chapters |
 | `cacheDir` | string | `node_modules/.cache/zreader` (`ZREADER_CACHE_DIR` env var; `withReader` sets `.next/cache/zreader`) | Compiled chapter cache |
 
@@ -202,6 +217,10 @@ Any object with a zod-style `safeParse` works. Custom fields end up in `chapter.
 | `defaultHighlightColor` | one of `highlightColors` | `"yellow"` | Used by highlight mode and the `h` key |
 | `scratchpad.enabled` | boolean | `true` | Show the scratchpad |
 | `scratchpad.scopes` | `("chapter" \| "book" \| "global")[]` | `["chapter", "book", "global"]` | Which pads readers can switch between |
+| `userImages.enabled` | boolean | `true` | Let readers add images to notes and scratchpads (stored in IndexedDB) |
+| `userImages.maxBytes` | number | 10 MB | Largest image a reader can add |
+| `offline.enabled` | boolean | `false` | "Save for offline" on book pages (see [Offline reading](./reader-features.md#offline-reading)) |
+| `offline.serviceWorker` | string (starts with `/`) | `"/zreader-sw.js"` | Where the offline service worker is served |
 | `themes` | subset of `system`, `light`, `sepia`, `dark` | all four | Themes offered in settings |
 | `defaultTheme` | one of `themes` | `"system"` | |
 | `defaultSettings.textSize` | `sm` `base` `lg` `xl` `2xl` | `"lg"` | |

@@ -12,12 +12,22 @@ import {
   type RecordType,
 } from "./schema";
 import type { ReaderStore } from "./store";
+import { base64ToBlob, blobToBase64, collectGarbage, findBlobRefs, referencedBlobs, type BlobStore } from "./blob-store";
 import type { Bookmark, BookProgress, Highlight, Pad, ReaderSettings } from "./types";
 
 export const BACKUP_FORMAT = "zreader-backup";
 /** Backups written before the rename to zreader; still accepted on import. */
 export const LEGACY_BACKUP_FORMATS: readonly string[] = ["alr-backup"];
-export const BACKUP_VERSION = 1;
+/** The newest backup version this build reads. v2 adds `blobs` (images); a backup without images is still written as v1. */
+export const BACKUP_VERSION = 2;
+
+/** An image in a backup: base64 of the blob. */
+export interface BackupBlob {
+  type: string;
+  size: number;
+  createdAt: string;
+  data: string;
+}
 
 export interface Backup {
   format: typeof BACKUP_FORMAT | "alr-backup";
@@ -25,6 +35,8 @@ export interface Backup {
   exportedAt: string;
   /** Keys are store-relative (prefix stripped), values are stored envelopes. */
   records: Record<string, Envelope>;
+  /** v2: images the records refer to (`zr-blob:<id>`), keyed by id. */
+  blobs?: Record<string, BackupBlob>;
 }
 
 export function recordTypeForKey(key: string): RecordType | null {
@@ -56,7 +68,23 @@ export function exportBackup(store: ReaderStore, opts: { bookId?: string } = {})
       /* skip corrupt */
     }
   }
-  return { format: BACKUP_FORMAT, schemaVersion: BACKUP_VERSION, exportedAt: new Date().toISOString(), records };
+  return { format: BACKUP_FORMAT, schemaVersion: 1, exportedAt: new Date().toISOString(), records };
+}
+
+/**
+ * `exportBackup` plus the images its records refer to, embedded as base64
+ * (schema v2 when there are any). Images that are missing locally are skipped.
+ */
+export async function exportBackupWithImages(store: ReaderStore, blobs: BlobStore, opts: { bookId?: string } = {}): Promise<Backup> {
+  const backup = exportBackup(store, opts);
+  const ids = findBlobRefs(JSON.stringify(backup.records));
+  if (!ids.size) return backup;
+  const out: Record<string, BackupBlob> = {};
+  for (const id of ids) {
+    const b = await blobs.get(id);
+    if (b) out[id] = { type: b.type, size: b.size, createdAt: b.createdAt, data: await blobToBase64(b.blob) };
+  }
+  return Object.keys(out).length ? { ...backup, schemaVersion: 2, blobs: out } : backup;
 }
 
 export class BackupFormatError extends Error {
@@ -80,6 +108,7 @@ export function parseBackup(input: string | unknown): Backup {
   if (typeof data.schemaVersion !== "number" || data.schemaVersion > BACKUP_VERSION)
     throw new BackupFormatError("Backup was created by a newer version of the reader");
   if (!isObj(data.records)) throw new BackupFormatError("Backup has no records");
+  if (data.blobs !== undefined && !isObj(data.blobs)) throw new BackupFormatError("Backup images are malformed");
   return data as unknown as Backup;
 }
 
@@ -180,6 +209,45 @@ export function importBackup(
   }
   store.reloadAll();
   return { imported, skipped };
+}
+
+export interface ImportWithImagesResult extends ImportResult {
+  images: number;
+  imagesSkipped: number;
+}
+
+/** Store a backup's images (v2). Malformed entries are skipped. */
+export async function importBackupImages(blobs: BlobStore, input: string | Backup): Promise<{ imported: number; skipped: number }> {
+  const backup = parseBackup(input);
+  let imported = 0;
+  let skipped = 0;
+  for (const [id, b] of Object.entries(backup.blobs ?? {})) {
+    try {
+      if (!isObj(b) || typeof b.data !== "string" || typeof b.type !== "string" || !/^image\//.test(b.type)) throw new Error("bad entry");
+      await blobs.put(base64ToBlob(b.data, b.type), id);
+      imported++;
+    } catch {
+      skipped++;
+    }
+  }
+  return { imported, skipped };
+}
+
+/**
+ * `importBackup` plus its images. In `replace` mode, images nothing refers to
+ * any more are deleted afterwards.
+ */
+export async function importBackupWithImages(
+  store: ReaderStore,
+  blobs: BlobStore,
+  input: string | Backup,
+  opts: { mode?: "merge" | "replace" } = {},
+): Promise<ImportWithImagesResult> {
+  const backup = parseBackup(input);
+  const images = await importBackupImages(blobs, backup);
+  const res = importBackup(store, backup, opts);
+  if (opts.mode === "replace") await collectGarbage(blobs, referencedBlobs(store), { graceMs: 0 });
+  return { ...res, images: images.imported, imagesSkipped: images.skipped };
 }
 
 /** Human-readable export of a book's highlights and notes. */

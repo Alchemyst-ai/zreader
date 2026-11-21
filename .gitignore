@@ -9,3 +9,12 @@ coverage/
 *.log
 .env
 .env.*
+
+# Example apps (examples/*)
+examples/*/node_modules/
+examples/*/build/
+examples/*/.next/
+examples/*/dist/
+examples/*/next-env.d.ts
+examples/*/*.tsbuildinfo
+.playwright-mcp/

@@ -114,3 +114,84 @@
   translate: 0 0.12em;
   accent-color: var(--zr-accent-color, currentColor);
 }
+
+/* ------------------------------------------------------------ chapter images */
+/* width/height attributes only reserve space; CSS keeps the aspect ratio. */
+[data-zr-reader] img[data-zr-image] {
+  max-width: 100%;
+  height: auto;
+}
+/* Images inside a line of text stay in the line (icons, badges). */
+[data-zr-reader] img[data-zr-image="inline"] {
+  display: inline-block;
+  vertical-align: middle;
+  margin-block: 0;
+}
+[data-zr-reader] img[data-zr-image="block"] {
+  display: block;
+  margin-inline: auto;
+}
+[data-zr-reader] figure:has(> img[data-zr-image], > a > img[data-zr-image], > picture) {
+  margin-inline: auto;
+  text-align: center;
+}
+[data-zr-reader] figure > figcaption {
+  text-align: center;
+}
+[data-zr-reader] img[data-zr-zoom] {
+  cursor: zoom-in;
+}
+[data-zr-reader] img[data-zr-zoom]:focus-visible {
+  outline: 2px solid var(--zr-ring, currentColor);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ math */
+/* MathML from content.math (every engine). Native MathML rendering; set
+   --zr-math-font to use a loaded math font (e.g. Latin Modern Math). */
+[data-zr-reader] math {
+  font-family: var(--zr-math-font, "Latin Modern Math", "STIX Two Math", "Cambria Math", math);
+  font-size: 1.05em;
+}
+[data-zr-reader] figure[data-zr-math="display"] {
+  margin-block: 1.25em;
+  margin-inline: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25em;
+  text-align: center;
+}
+[data-zr-reader] math[display="block"] {
+  display: block math;
+  margin-inline: auto;
+}
+/* The TeX source rides along for copy and agents; MathML Core hides it already. */
+[data-zr-reader] math annotation {
+  display: none;
+}
+[data-zr-reader] code.zr-math-error {
+  color: var(--zr-destructive, #b91c1c);
+}
+
+/* ------------------------------------------------- images in the scratchpad */
+.zr-editor img.zr-pad-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 0.5rem;
+  border-radius: 0.375rem;
+}
+.zr-editor img.zr-pad-image[data-state="loading"] {
+  min-height: 3rem;
+  min-width: 6rem;
+  background: var(--zr-muted, rgb(0 0 0 / 0.05));
+}
+.zr-editor img.zr-pad-image[data-state="missing"] {
+  min-height: 2rem;
+  min-width: 6rem;
+  border: 1px dashed var(--zr-border, currentColor);
+}
+.zr-editor img.zr-pad-image.ProseMirror-selectednode {
+  outline: 2px solid var(--zr-ring, currentColor);
+  outline-offset: 2px;
+}

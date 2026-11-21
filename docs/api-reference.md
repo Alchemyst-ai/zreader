@@ -19,18 +19,23 @@ Browser. The reader UI. See [React](./react.md).
 - `BookContents` / `BookHome` (`BookContentsProps` / `BookHomeProps`)
 - `ContinueReading`, `ChapterList` (`BookNavProps`)
 - `Reader` (`ReaderProps`), `ReaderTitle`, `useReaderChapter()` (`ReaderChapterValue`)
-- `Callout` (`CalloutProps`)
+- `Callout` (`CalloutProps`), `ZImage` (`ZImageProps`), `BookCover`
+- `SaveOffline`, `useOfflineBook(book)` (`OfflineStatus`)
+- `BlobImage` (`BlobImageProps`), `imageFiles(dataTransfer)`, `noteImages(note)`, `noteText(note)`
+- `ImageViewer` (`ImageViewerProps`), `useImageViewer(root, enabled?)`, `describeImage(img)`, `ZOOMABLE_SELECTOR` (`ViewerImage`)
 - Building blocks: `ContentsSheet` (`ContentsSheetProps`, `ContentsTab`), `HighlightPanel`, `SelectionToolbar`, `SettingsPanel`, `ScratchpadPanel`, `scopeFor`, `scopeKey`, `ResponsivePanel`
 
 **Hooks**
 
 - `useSettings()`, `useHighlights(bookId, chapterId?)`, `useBookmarks(bookId)`, `useProgress(bookId)`, `usePad(scope)`
+- `useBlobStore()`, `useBlobUrl(src)`, `useBlobUsage()`, `useAddImage()`
 - `useHydrated()`, `useMediaQuery(query, serverValue?)`, `useIsDesktop()`
 - `useChapterEngine(options)` (`ChapterEngine`, `ChapterEngineOptions`, `SelectionState`), `useValueStore(store)`
 
 **Utilities**
 
 - `DefaultLink`, `defaultHref(basePath, bookId, chapterId?, hash?)`, `LinkComponent`
+- `DefaultImage`, `ImageComponent`
 - `groupByPart(chapters)` (`PartGroup`), `chapterMarker(chapter, index)`
 - `copyText(text)`, `downloadFile(filename, content, type?)`
 - Class maps: `PROSE_CLASS`, `TEXT_SIZE_CLASS`, `LEADING_CLASS`, `MEASURE_CLASS`, `FONT_CLASS`, `SWATCH_CLASS`, `swatchClass(color)`, `QUOTE_BORDER_CLASS`, `quoteBorderClass(color)`
@@ -55,7 +60,7 @@ Node. See [Agent-readable content](./agent.md).
 - `createAgentHandler(options?)`: `(request: Request) => Promise<Response | undefined>` — serves every shelf by default
 - `matchAgentRoute(pathname, basePath)`: `AgentRouteMatch | null` (`{ kind: "shelf" }`, `"book"` or `"chapter"`)
 - `requestOrigin(request)`
-- Types: `AgentHandler`, `AgentHandlerOptions` (`shelves`, `origin`, `cacheControl`, `devWarnings`, `sources`), `AgentContentSource`, `AgentRouteMatch`
+- Types: `AgentHandler`, `AgentHandlerOptions` (`shelves`, `origin`, `cacheControl`, `devWarnings`, `assets`, `sources`), `AgentContentSource`, `AgentRouteMatch`
 
 **Converters and helpers**
 
@@ -102,9 +107,13 @@ Node. See [Content layer](./content.md).
 - `getShelves()`: every resolved `ResolvedShelf`
 - `defineBooks(contentOptions | resolvedConfig)`: a separate API with the same methods, for content that isn't a shelf
 - `toBookMeta(bookEntry)`, `loadBooks(config)`, `compileChapter(entry, config)`, `ContentError`
-- `renderMarkdown(md, opts?)`, `renderHtml(html, opts?)`, `annotateHtml(html)`, `compileMdx(source, opts?)`, `runMdx(code)`, `sanitizeHtml(html, sanitize?)`
+- `renderMarkdown(md, opts?)`, `renderHtml(html, opts?)`, `annotateHtml(html, opts?)`, `compileMdx(source, opts?)`, `runMdx(code)`, `sanitizeHtml(html, sanitize?)`
+- `htmlToReact(html, { components })`: compiled HTML as React elements
+- Images ([Images](./images.md)): `rehypeImages(opts?)`, `checkImageUrl(src, images?)`, `classifyImageUrl(src)`, `hostAllowed(host, list)`, `parseDataUri(src)`, `parseSrcset(value)`, `stringifySrcset(list)`, `measureFile(file)`, `probeRemoteImage(src, timeoutMs)`, `formatBytes(n)`
+- Math ([Math](./math.md)): `rehypeMath({ math })`, `rehypeMathDelimiters()`, `getMathRenderer(config)`, `resolveMath(option)`, `toMathElement(markup, tex, display)`, `MathEngineMissingError`, `MATH_PACKAGES` (`MathRenderer`, `RehypeMathOptions`)
+- Assets: `createAssetHandler({ shelves?, cacheControl? })`, `serveAsset(request, opts)`, `resolveBookAsset(src, ctx)`, `matchAssetRoute(pathname, basePath, route)`, `assetUrl(ctx, hash, path)`, `ASSET_TYPES`, `SVG_CSP`
 - `rehypeBlocks`, `hashString`, `glob`, `defineConfig`, `z`
-- Types: `BookEntry`, `ChapterEntry`, `ChapterLookup`, `RenderedChapter`, `ShelfApi`, `HtmlResult`, `MdxCompiled`, `MdxContent`, `MdxComponents`, `ChapterFormat`, `PipelineOptions`, `BlockInfo`, `BlocksData`, `ReaderUserConfig`, `ResolvedReaderConfig`, `ResolvedShelf`, `BookshelfConfig`, `SanitizeOptions`, `ContentConfig`, `GlobLoader`
+- Types: `BookEntry`, `ChapterEntry`, `ChapterLookup`, `RenderedChapter`, `ShelfApi`, `HtmlResult`, `MdxCompiled`, `MdxContent`, `MdxComponents`, `ChapterFormat`, `PipelineOptions`, `ImagePipelineOptions`, `ImageDimensions`, `ImageUrlKind`, `ResolvedLocalImage`, `BookAssetContext`, `AssetRouteMatch`, `ServeAssetOptions`, `HtmlToReactOptions`, `CompileDependency`, `ImageOptions`, `AssetOptions`, `MathOption`, `MathEngine`, `MathConfig`, `BlockInfo`, `BlocksData`, `ReaderUserConfig`, `ResolvedReaderConfig`, `ResolvedShelf`, `BookshelfConfig`, `SanitizeOptions`, `ContentConfig`, `GlobLoader`
 
 Browser bundles resolve this entry to a stub that throws.
 
@@ -116,16 +125,16 @@ Node (ESM and CJS). See [Configuration](./configuration.md).
 - `resolveConfig(user?, inline?, { root?, source? })`, `mergeConfig(base, ...overrides)`, `clientOptions(resolved, shelfId?)`
 - `shelfById(config, id?)`, `defaultShelfOf(config)`, `mergePlugins(top, own)`, `applyDisables(plugins)`
 - `normalizeBasePath(basePath)`, `pathContains(outer, inner)`
-- `defaultContentConfig()`, `defaultBookSchema`, `defaultChapterSchema`
+- `defaultContentConfig()`, `defaultImageOptions()`, `DEFAULT_ASSET_EXTENSIONS`, `MATH_ENGINES`, `defaultBookSchema`, `defaultChapterSchema`
 - `ReaderConfigError` (with `issues: { path, message }[]`), `CONFIG_FILE_NAMES`
-- Types: `ReaderUserConfig` (`content`, `reader`, `agent`, `bookshelves`), `BookshelfConfig`, `ResolvedReaderConfig` (`root`, `content`, `reader`, `shelves`, `defaultShelf`), `ResolvedShelf`, `ContentConfig`, `GlobLoader`, `SanitizeOptions`, `PluginList`, `DeepPartial`
+- Types: `ReaderUserConfig` (`content`, `reader`, `agent`, `bookshelves`), `BookshelfConfig`, `ResolvedReaderConfig` (`root`, `content`, `reader`, `shelves`, `defaultShelf`), `ResolvedShelf`, `ContentConfig`, `GlobLoader`, `SanitizeOptions`, `ImageOptions`, `AssetOptions`, `MathOption`, `MathEngine`, `MathConfig`, `PluginList`, `DeepPartial`
 
 ## `zreader/next`
 
 Node (ESM and CJS), for `next.config.*`. See [Next.js](./nextjs.md).
 
 - `withReader(nextConfig?, options?)` (`WithReaderOptions`: `configPath`, `root`, `config`, `verbose`)
-- `setupReader(options?)`, `applyReaderConfig(base, setup, root)`: the pieces of `withReader`, exported for testing and custom setups
+- `setupReader(options?)`, `applyReaderConfig(base, setup, root)`, `readerImagesConfig(images, resolved)`: the pieces of `withReader`, exported for testing and custom setups
 - `resolveConfig`, `findConfigFile(root)`, `loadConfigFile(file)`
 - `USER_CONFIG_SPECIFIER`, `EMPTY_CONFIG_SPECIFIER`, `SERVER_EXTERNALS`
 
@@ -137,12 +146,16 @@ React Server Components.
 - `ReaderChapter` (`ReaderChapterProps` with `shelf`)
 - `getBookParams(shelf?)`, `getChapterParams(shelf?)`
 - `agentMatcher(shelf)`, `mdxComponents`, `readerConfig`, `getClientOptions(shelf?)`
+- `serviceWorkerRoute(options?)`: `{ GET }` serving the offline worker
+- `assetRoute(shelf?)`: `{ GET, HEAD }` for `app/<shelf>/[book]/%5Fassets/[...path]/route.ts`
+- `createReaderImage(images)`, `imageDecision(src, hasSrcset, images)` (`ReaderImageDecision`)
 
 ## `zreader/next/client`
 
 Browser.
 
-- `NextReaderProvider` (`NextReaderProviderProps`): `ReaderProvider` with `Link` bound to `next/link`
+- `NextReaderProvider` (`NextReaderProviderProps`): `ReaderProvider` with `Link` bound to `next/link` and `Image` to `NextCoverImage`
+- `NextCoverImage`: book covers through `next/image` with `fill`
 
 ## `zreader/editor`
 
@@ -151,6 +164,14 @@ Browser. Lazy-loaded by the scratchpad; import it directly only for a custom edi
 - `ScratchpadEditor` (default export too) with `ScratchpadEditorProps`: `scope`, `placeholder?`, `autoFocus?`, `onFocus?`, `className?`
 
 Needs the Tiptap peer dependencies.
+
+## `zreader/sw`
+
+Anywhere (the script is a string). See [Offline reading](./reader-features.md#offline-reading).
+
+- `serviceWorkerScript({ cacheName?, immutablePrefixes? })`: the worker's source
+- `SW_HEADERS`, `SW_CACHE`, `SW_PATH`
+- Types: `ServiceWorkerOptions`, `ServiceWorkerMessage`, `ServiceWorkerReply`
 
 ## `zreader/rehype`
 
@@ -183,6 +204,9 @@ The store's methods:
 **Backup**
 
 - `exportBackup(store, { bookId? })`, `importBackup(store, input, { mode? })` (`ImportResult`), `parseBackup(input)`
+- `exportBackupWithImages(store, blobs, opts?)`, `importBackupWithImages(store, blobs, input, opts?)` (`ImportWithImagesResult`), `importBackupImages(blobs, input)` (`BackupBlob`)
+- Reader images: `createBlobStore(prefix)`, `createIndexedDbBlobStore(prefix, idb?)`, `createMemoryBlobStore()`, `referencedBlobs(store)`, `collectGarbage(blobs, referenced, opts?)`, `blobUrl(id)`, `parseBlobUrl(src)`, `findBlobRefs(text)`, `dataUriToBlob(uri)`, `blobToBase64(blob)`, `base64ToBlob(data, type)`, `formatStorageBytes(n)`, `BLOB_SCHEME`, `BlobTooLargeError` (`BlobStore`, `BlobInfo`, `StoredBlob`, `BlobUsage`, `CollectGarbageOptions`)
+- Block helpers: `blockText(el)`, `imageKey(alt, src)`, `mediaBlockText(keys)`
 - `BackupFormatError`, `BACKUP_FORMAT`, `BACKUP_VERSION`, `LEGACY_BACKUP_FORMATS`, `recordTypeForKey(key)`
 - `highlightToMarkdown(h, href?)`, `quoteToMarkdown(text, opts?)`, `highlightsToMarkdown(bookTitle, highlights, chapterTitle?)`
 

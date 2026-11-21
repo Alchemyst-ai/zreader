@@ -5,6 +5,7 @@
 import rehypeParse from "rehype-parse";
 import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -140,13 +141,17 @@ function stripMdx(nodes: Node[]): Node[] {
 
 const stringify = { bullet: "-", emphasis: "_", rule: "-", fences: true } as const;
 
-/** Trusted MDX → Markdown: drops imports/exports/expressions, unwraps JSX. */
+/**
+ * Trusted MDX → Markdown: drops imports/exports/expressions, unwraps JSX.
+ * `$…$` and `$$…$$` are parsed as math first, so TeX braces survive.
+ */
 export async function mdxToMarkdown(source: string): Promise<string> {
-  const processor = unified().use(remarkParse).use(remarkMdx).use(remarkGfm);
+  const processor = unified().use(remarkParse).use(remarkMath).use(remarkMdx).use(remarkGfm);
   const tree = (await processor.run(processor.parse(source))) as unknown as Node;
   tree.children = stripMdx(tree.children ?? []);
   return unified()
     .use(remarkGfm)
+    .use(remarkMath)
     .use(remarkStringify, stringify)
     .stringify(tree as never);
 }
@@ -162,12 +167,36 @@ function embedHandler(_state: unknown, node: HastElement) {
   return { type: "link", url, children: [{ type: "text", value: fileLabel(url, title) }] };
 }
 
-/** HTML → Markdown (GFM tables, fenced code; embedded files become links). */
+function hastText(node: unknown): string {
+  const n = node as { type?: string; value?: string; children?: unknown[] };
+  if (n.type === "text") return n.value ?? "";
+  return (n.children ?? []).map(hastText).join("");
+}
+
+function findTex(node: unknown): string | undefined {
+  const n = node as HastElement & { type?: string };
+  if (n.type === "element" && n.tagName === "annotation" && n.properties?.encoding === "application/x-tex") return hastText(n).trim();
+  for (const c of n.children ?? []) {
+    const t = findTex(c);
+    if (t != null) return t;
+  }
+  return undefined;
+}
+
+/** `<math>` with a TeX annotation → `$tex$` / `$$tex$$`; without one, its text. */
+function mathHandler(_state: unknown, node: HastElement) {
+  const tex = findTex(node);
+  if (tex == null) return { type: "text", value: hastText(node).replace(/\s+/g, " ").trim() };
+  return node.properties?.display === "block" ? { type: "math", value: tex } : { type: "inlineMath", value: tex };
+}
+
+/** HTML → Markdown (GFM tables, fenced code, math; embedded files become links). */
 export async function htmlToMarkdown(html: string): Promise<string> {
   const file = await unified()
     .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark, { handlers: { embed: embedHandler, iframe: embedHandler, object: embedHandler } as never })
+    .use(rehypeRemark, { handlers: { embed: embedHandler, iframe: embedHandler, object: embedHandler, math: mathHandler } as never })
     .use(remarkGfm)
+    .use(remarkMath)
     .use(remarkStringify, stringify)
     .process(html);
   return String(file);

@@ -10,6 +10,8 @@ npm i zreader
 npm i @tiptap/react @tiptap/pm @tiptap/core @tiptap/starter-kit @tiptap/extension-list @tiptap/extensions @tiptap/markdown
 ```
 
+Runnable apps: [`examples/next-shadcn`](./examples/next-shadcn) and [`examples/vite-shadcn`](./examples/vite-shadcn). Before shipping, go through the [production checklist](./docs/production-checklist.md).
+
 ## What you get
 
 **For readers**
@@ -17,7 +19,9 @@ npm i @tiptap/react @tiptap/pm @tiptap/core @tiptap/starter-kit @tiptap/extensio
 - **Sentence highlights** — select text, or switch on highlight mode and tap a sentence. Up to six colours (four by default), a note on any highlight, and a list per book.
 - **Bookmarks** on any block, with an excerpt and an undo.
 - **Reading progress** that resumes where they left off and marks chapters read.
-- **A WYSIWYG Markdown scratchpad** (Tiptap) with checklists — a pad per chapter, per book and a global one, and highlights quote straight into it.
+- **A WYSIWYG Markdown scratchpad** (Tiptap) with checklists — a pad per chapter, per book and a global one, and highlights quote straight into it. Images pasted into the pad or a note are kept in the browser (IndexedDB).
+- **A full-screen image viewer** with pinch and wheel zoom.
+- **Offline reading** (opt-in): save a whole book, images included.
 - **Reading settings**: theme (light, sepia, dark), text size, line spacing, line width and font.
 - **JSON backup and restore**, with a reminder that their notes live only in this browser.
 - None of it needs an account, a server or a network call.
@@ -27,6 +31,7 @@ npm i @tiptap/react @tiptap/pm @tiptap/core @tiptap/starter-kit @tiptap/extensio
 - One `ReaderProvider` and three components — `BookShelf`, `BookContents`, `Reader` — driven by a plain `BookMeta[]` catalogue. It can come from JSON, a CMS, a fetch or a folder of files.
 - Runs on **Vite, React Router, Remix, TanStack or Next.js**. Next.js gets an optional adapter that compiles chapters and generates every page statically.
 - An optional **content layer** for `content/books/**`: Markdown, MDX and HTML, with frontmatter schemas, ordering, parts, drafts and DOMPurify sanitizing.
+- **[Images](./docs/images.md)** from files next to the chapter, URLs or base64, measured at build time, with captions and `next/image` under Next.js. **[Math](./docs/math.md)** with KaTeX, Temml or MathJax, rendered as MathML.
 - **Mobile-first UI** on shadcn/ui, styled by a precompiled stylesheet or your own Tailwind v4 tokens.
 - Highlights anchor to stable **block ids** and survive edits; a build-time rehype plugin puts the same ids in the HTML before first paint.
 - **Bookshelves**: several independent readers on one site, each with its own route, content folder and plugins.

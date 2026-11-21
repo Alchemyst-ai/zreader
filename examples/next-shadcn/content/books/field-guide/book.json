@@ -1,0 +1,7 @@
+{
+  "title": "The Field Guide",
+  "subtitle": "A short book about reading on the web",
+  "authors": ["A. Writer"],
+  "description": "Three chapters, one per format: Markdown with images, MDX with math, and HTML.",
+  "cover": "./images/cover.svg"
+}

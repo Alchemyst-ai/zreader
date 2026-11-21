@@ -1,0 +1,7 @@
+{
+  "title": "The Field Guide",
+  "subtitle": "A short book about reading on the web",
+  "authors": ["A. Writer"],
+  "description": "Three chapters that show zreader in a Vite app: MDX, images, math and the scratchpad.",
+  "cover": "/images/cover.svg"
+}

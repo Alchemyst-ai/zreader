@@ -7,9 +7,12 @@ import {
   LEADINGS,
   MEASURES,
   TEXT_SIZES,
-  exportBackup,
+  collectGarbage,
+  exportBackupWithImages,
+  formatStorageBytes,
   highlightsToMarkdown,
-  importBackup,
+  importBackupWithImages,
+  referencedBlobs,
   requestPersistentStorage,
   type BookMeta,
   type FontFamily,
@@ -24,7 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useHighlights, useHydrated, useReader, useSettings } from "../context";
+import { useBlobUsage, useHighlights, useHydrated, useReader, useSettings } from "../context";
 import { downloadFile } from "../download";
 import { ResponsivePanel } from "./responsive-panel";
 
@@ -76,7 +79,8 @@ export interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ open, onOpenChange, book }: SettingsPanelProps) {
-  const { store, options } = useReader();
+  const { store, blobs, options } = useReader();
+  const usage = useBlobUsage();
   const [settings, update] = useSettings();
   const { theme, setTheme } = useTheme();
   const hydrated = useHydrated();
@@ -90,13 +94,27 @@ export function SettingsPanel({ open, onOpenChange, book }: SettingsPanelProps) 
 
   const onImport = async (file: File) => {
     try {
-      const res = importBackup(store, await file.text(), { mode: replace ? "replace" : "merge" });
+      const res = await importBackupWithImages(store, blobs, await file.text(), { mode: replace ? "replace" : "merge" });
+      const extra = [res.images ? `${res.images} image${res.images === 1 ? "" : "s"}` : "", res.skipped + res.imagesSkipped ? `${res.skipped + res.imagesSkipped} skipped` : ""].filter(Boolean);
       toast.success(`Imported ${res.imported} record${res.imported === 1 ? "" : "s"}`, {
-        description: res.skipped ? `${res.skipped} skipped` : undefined,
+        description: extra.length ? extra.join(", ") : undefined,
       });
     } catch (e) {
       toast.error("Import failed", { description: (e as Error).message });
     }
+  };
+
+  const onExport = async () => {
+    try {
+      downloadFile(`reader-backup-${stamp}.json`, JSON.stringify(await exportBackupWithImages(store, blobs), null, 2));
+    } catch (e) {
+      toast.error("Export failed", { description: (e as Error).message });
+    }
+  };
+
+  const onCleanUp = async () => {
+    const removed = await collectGarbage(blobs, referencedBlobs(store), { graceMs: 0 });
+    toast(removed.length ? `Removed ${removed.length} unused image${removed.length === 1 ? "" : "s"}` : "No unused images");
   };
 
   return (
@@ -142,7 +160,7 @@ export function SettingsPanel({ open, onOpenChange, book }: SettingsPanelProps) 
             </Alert>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => downloadFile(`reader-backup-${stamp}.json`, JSON.stringify(exportBackup(store), null, 2))}>
+            <Button type="button" variant="outline" onClick={() => void onExport()}>
               <DownloadIcon /> Export backup
             </Button>
             <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
@@ -178,6 +196,16 @@ export function SettingsPanel({ open, onOpenChange, book }: SettingsPanelProps) 
               e.target.value = "";
             }}
           />
+          {usage && usage.count > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>
+                {usage.count} image{usage.count === 1 ? "" : "s"} in notes and scratchpads, {formatStorageBytes(usage.bytes)}
+              </span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => void onCleanUp()}>
+                Remove unused images
+              </Button>
+            </div>
+          )}
           <Button
             type="button"
             variant="link"

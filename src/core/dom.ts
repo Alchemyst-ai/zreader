@@ -5,7 +5,7 @@
  * safe with React-rendered (MDX) and server-rendered (HTML) chapters alike.
  */
 import { quoteFor, resolveInText, sentenceAt, snapToWords, type TextSpan } from "./text";
-import { BLOCK_TAGS, createBlockIdAllocator, createSlugger, normalizeBlockText } from "./blocks";
+import { BLOCK_TAGS, createBlockIdAllocator, createSlugger, imageKey, mediaBlockText, normalizeBlockText } from "./blocks";
 import type { Anchor, Highlight, TocEntry } from "./types";
 
 export const BLOCK_ATTR = "data-block-id";
@@ -27,6 +27,16 @@ const BLOCK_SELECTOR = Array.from(BLOCK_TAGS).join(",");
 const HEADING_TAG = /^H([1-6])$/;
 
 /**
+ * A block's text, or for an image-only block its images (`Image: alt`): the same
+ * text the build-time plugin hashes into the id. Use it for excerpts.
+ */
+export function blockText(el: Element): string {
+  const text = normalizeBlockText(el.textContent ?? "");
+  if (text) return text;
+  return mediaBlockText(Array.from(el.querySelectorAll("img")).map((img) => imageKey(img.getAttribute("alt"), img.getAttribute("src"))));
+}
+
+/**
  * Give blocks and headings the ids the build-time plugin would have given them
  * (`zreader/rehype`), for content rendered without it: MDX compiled
  * by your bundler, JSX, third-party HTML. Same traversal order, same hash, so ids
@@ -46,8 +56,9 @@ export function ensureBlockIds(root: Element): { assigned: number } {
       else el.setAttribute("id", slugger.slug(text));
     }
     if (el.querySelector(BLOCK_SELECTOR)) continue; // only innermost blocks are anchors
-    if (!text) continue;
-    el.setAttribute(BLOCK_ATTR, allocate(el.tagName, text));
+    const key = text || blockText(el);
+    if (!key) continue;
+    el.setAttribute(BLOCK_ATTR, allocate(el.tagName, key));
     assigned++;
   }
   return { assigned };

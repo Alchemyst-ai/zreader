@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Node as TiptapNode, mergeAttributes, nodeInputRule } from "@tiptap/core";
+import { toast } from "sonner";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
@@ -10,6 +12,7 @@ import {
   CodeIcon,
   Heading2Icon,
   Heading3Icon,
+  ImagePlusIcon,
   ItalicIcon,
   ListChecksIcon,
   ListIcon,
@@ -20,8 +23,8 @@ import {
   StrikethroughIcon,
   Undo2Icon,
 } from "lucide-react";
-import type { PadScope } from "zreader";
-import { useReader, usePad } from "zreader/react";
+import { parseBlobUrl, type BlobStore, type PadScope } from "zreader";
+import { useAddImage, useBlobStore, useReader, usePad, imageFiles } from "zreader/react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
@@ -48,7 +51,91 @@ function Mark({ label, pressed, onPressed, disabled, children }: { label: string
   );
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+const IMAGE_INPUT = /(?:^|\s)(!\[([^\]]*)\]\((\S+)(?:\s+["']([^"']+)["'])?\))$/;
+
+/**
+ * A block image node (like `@tiptap/extension-image`, without the extra
+ * dependency) whose view resolves `zr-blob:<id>` (images stored in IndexedDB)
+ * to object URLs. Stored Markdown keeps `![alt](zr-blob:<id>)`.
+ */
+function readerImage(blobs: BlobStore) {
+  return TiptapNode.create({
+    name: "image",
+    group: "block",
+    draggable: true,
+    atom: true,
+    addAttributes() {
+      return { src: { default: null }, alt: { default: null }, title: { default: null } };
+    },
+    parseHTML() {
+      return [{ tag: "img[src]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["img", mergeAttributes(HTMLAttributes)];
+    },
+    parseMarkdown: (token, helpers) => helpers.createNode("image", { src: token.href, title: token.title, alt: token.text }),
+    renderMarkdown: (node) => {
+      const { src = "", alt, title } = (node.attrs ?? {}) as { src?: string; alt?: string | null; title?: string | null };
+      return title ? `![${alt ?? ""}](${src} "${title}")` : `![${alt ?? ""}](${src})`;
+    },
+    addInputRules() {
+      return [
+        nodeInputRule({
+          find: IMAGE_INPUT,
+          type: this.type,
+          getAttributes: (m) => ({ alt: m[2], src: m[3], title: m[4] }),
+        }),
+      ];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const img = document.createElement("img");
+        img.className = "zr-pad-image";
+        img.draggable = true;
+        let current: string | null = null;
+        let blobId: string | null = null;
+        const show = (src: string | null, alt: string | null, title: string | null) => {
+          img.alt = alt ?? "";
+          if (title) img.title = title;
+          else img.removeAttribute("title");
+          if (src === current) return;
+          current = src;
+          if (blobId) blobs.release(blobId);
+          blobId = parseBlobUrl(src);
+          if (!blobId) {
+            if (src) img.src = src;
+            else img.removeAttribute("src");
+            return;
+          }
+          const id = blobId;
+          img.removeAttribute("src");
+          img.dataset.state = "loading";
+          void blobs.url(id).then((url) => {
+            if (blobId !== id) return;
+            if (url) {
+              img.src = url;
+              delete img.dataset.state;
+            } else img.dataset.state = "missing";
+          });
+        };
+        show(node.attrs.src, node.attrs.alt, node.attrs.title);
+        return {
+          dom: img,
+          update(next) {
+            if (next.type !== node.type) return false;
+            show(next.attrs.src, next.attrs.alt, next.attrs.title);
+            return true;
+          },
+          destroy() {
+            if (blobId) blobs.release(blobId);
+          },
+        };
+      };
+    },
+  });
+}
+
+function Toolbar({ editor, onImage }: { editor: Editor; onImage?: () => void }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -109,6 +196,16 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Mark label="Code block" pressed={s.codeBlock} onPressed={() => c().toggleCodeBlock().run()}>
         <SquareCodeIcon />
       </Mark>
+      {onImage && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Insert image" onClick={onImage}>
+              <ImagePlusIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Insert image</TooltipContent>
+        </Tooltip>
+      )}
       <Separator orientation="vertical" className="mx-1 h-5" />
       <Tooltip>
         <TooltipTrigger asChild>
@@ -137,9 +234,63 @@ function Toolbar({ editor }: { editor: Editor }) {
  */
 export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to-dos…  Type “- [ ]” for a checklist.", autoFocus, onFocus, className }: ScratchpadEditorProps) {
   const { store } = useReader();
+  const blobs = useBlobStore();
+  const images = useAddImage();
   const pad = usePad(scope);
   const lastWritten = useRef<string | null>(pad.markdown);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const addRef = useRef(images.add);
+  addRef.current = images.add;
+  const enabledRef = useRef(images.enabled);
+  enabledRef.current = images.enabled;
+
+  /** Store image files and insert them at `pos` (or the selection). */
+  const insertFiles = async (e: Editor, files: File[], pos?: number) => {
+    for (const f of files) {
+      try {
+        const src = await addRef.current(f);
+        const node = { type: "image", attrs: { src, alt: f.name.replace(/\.[a-z0-9]+$/i, "") } };
+        if (pos != null) e.chain().focus().insertContentAt(pos, node).run();
+        else e.chain().focus().insertContent(node).run();
+      } catch (err) {
+        toast.error("Couldn't add the image", { description: (err as Error).message });
+      }
+    }
+  };
+
+  /** Pasted HTML can carry base64 images: move them to IndexedDB so the pad stays small. */
+  const externalize = (e: Editor) => {
+    if (!enabledRef.current) return;
+    const found: string[] = [];
+    e.state.doc.descendants((n) => {
+      if (n.type.name === "image" && typeof n.attrs.src === "string" && n.attrs.src.startsWith("data:")) found.push(n.attrs.src);
+    });
+    for (const data of new Set(found)) {
+      void addRef.current(data).then(
+        (src) => {
+          if (e.isDestroyed) return;
+          const { tr } = e.state;
+          e.state.doc.descendants((n, p) => {
+            if (n.type.name === "image" && n.attrs.src === data) tr.setNodeMarkup(p, undefined, { ...n.attrs, src });
+          });
+          if (tr.docChanged) e.view.dispatch(tr);
+        },
+        () => {
+          // Too large or not an image: drop it rather than store megabytes in localStorage.
+          if (e.isDestroyed) return;
+          const { tr } = e.state;
+          const at: number[] = [];
+          e.state.doc.descendants((n, p) => {
+            if (n.type.name === "image" && n.attrs.src === data) at.push(p);
+          });
+          for (const p of at.reverse()) tr.delete(p, p + 1);
+          if (tr.docChanged) e.view.dispatch(tr);
+          toast.error("Couldn't add a pasted image");
+        },
+      );
+    }
+  };
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -150,6 +301,7 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder }),
+      readerImage(blobs),
       Markdown,
     ],
     content: pad.json ?? pad.markdown,
@@ -164,9 +316,25 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
         "aria-multiline": "true",
         role: "textbox",
       },
+      handlePaste: (view, event) => {
+        const files = imageFiles(event.clipboardData);
+        if (!files.length || !enabledRef.current || !editorRef.current) return false;
+        event.preventDefault();
+        void insertFiles(editorRef.current, files);
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        const files = imageFiles(event.dataTransfer);
+        if (moved || !files.length || !enabledRef.current || !editorRef.current) return false;
+        event.preventDefault();
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        void insertFiles(editorRef.current, files, pos);
+        return true;
+      },
     },
     onFocus: () => onFocus?.(),
     onUpdate: ({ editor: e }) => {
+      externalize(e);
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         const md = e.getMarkdown();
@@ -175,6 +343,9 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
       }, 300);
     },
   });
+
+  const editorRef = useRef<Editor | null>(null);
+  editorRef.current = editor;
 
   // Flush pending edits on unmount/scope change.
   useEffect(
@@ -200,8 +371,22 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
   if (!editor) return null;
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      <Toolbar editor={editor} />
+      <Toolbar editor={editor} onImage={images.enabled ? () => fileRef.current?.click() : undefined} />
       <EditorContent editor={editor} className="zr-editor min-h-0 flex-1 overflow-y-auto overscroll-contain" />
+      {images.enabled && (
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(ev) => {
+            const files = Array.from(ev.target.files ?? []);
+            ev.target.value = "";
+            if (files.length) void insertFiles(editor, files);
+          }}
+        />
+      )}
     </div>
   );
 }

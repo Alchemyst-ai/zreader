@@ -41,7 +41,55 @@ export interface SanitizeOptions {
   allowTags?: string[];
   /** Extra attributes to allow. */
   allowAttributes?: string[];
+  /** Keep inline `<svg>` (DOMPurify's SVG profile). Off by default. */
+  svg?: boolean;
 }
+
+export interface ImageOptions {
+  /** Remote (`http(s)`) image URLs: `true` for any host, `false` for none, or a host allowlist (subdomains included). */
+  allowRemote: boolean | string[];
+  /** Inline `data:image/*;base64` URIs. */
+  allowDataUri: boolean;
+  /** Largest decoded size of one inline image, in bytes. Larger ones are dropped with a warning. Default 8 MB. */
+  maxDataUriBytes: number;
+  /** Largest total of inline images in one chapter, in bytes. Images past it are dropped with a warning. No limit by default. */
+  maxDataUriTotalBytes?: number;
+  /** In development, warn when a chapter's inline images add up to more than this. Default 2 MB. */
+  warnDataUriTotalBytes: number;
+  /** Allow `data:image/svg+xml` URIs. */
+  allowSvgDataUri: boolean;
+  /** Fetch the first bytes of remote images at compile time to learn their size. Needs network during builds. */
+  probeRemote: boolean;
+  /** Timeout for one remote probe. */
+  probeTimeoutMs: number;
+  /** Add `loading="lazy"` and `decoding="async"`. */
+  lazy: boolean;
+  /** Open block images in a full-screen viewer on tap. */
+  lightbox: boolean;
+  /** Turn a lone image's title into a `<figure>` with a `<figcaption>`. */
+  captions: boolean;
+}
+
+export interface AssetOptions {
+  /** URL segment for book assets: `{basePath}/{book}/{route}/…`. */
+  route: string;
+  /** File extensions served from a book folder. */
+  extensions: string[];
+}
+
+export const MATH_ENGINES = ["katex", "temml", "mathjax"] as const;
+export type MathEngine = (typeof MATH_ENGINES)[number];
+
+export interface MathConfig {
+  engine: MathEngine;
+  /** Options passed to the engine (KaTeX/Temml render options, MathJax TeX input options). */
+  options?: Record<string, unknown>;
+  /** TeX macros shared by every engine: `{ "\\RR": "\\mathbb{R}" }`. */
+  macros?: Record<string, string>;
+}
+
+/** `false` (default) turns math off. Every engine renders MathML. */
+export type MathOption = false | MathEngine | MathConfig;
 
 export interface ContentConfig {
   loader: GlobLoader;
@@ -50,6 +98,12 @@ export interface ContentConfig {
   remarkPlugins: PluginList;
   rehypePlugins: PluginList;
   sanitize: SanitizeOptions;
+  /** Image sources, sizes, captions and the viewer. */
+  images: ImageOptions;
+  /** Files served from inside book folders (images next to chapters). */
+  assets: AssetOptions;
+  /** TeX math. Off by default; the engine is an optional dependency. */
+  math: MathOption;
   /** Include chapters with `draft: true`. Defaults to `true` in development. */
   includeDrafts: boolean;
   /** Where compiled chapters are cached. */
@@ -144,6 +198,23 @@ function isDev() {
   return typeof process !== "undefined" && process.env?.NODE_ENV === "development";
 }
 
+export const DEFAULT_ASSET_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"] as const;
+
+export function defaultImageOptions(): ImageOptions {
+  return {
+    allowRemote: true,
+    allowDataUri: true,
+    maxDataUriBytes: 8 * 1024 * 1024,
+    warnDataUriTotalBytes: 2 * 1024 * 1024,
+    allowSvgDataUri: false,
+    probeRemote: false,
+    probeTimeoutMs: 3000,
+    lazy: true,
+    lightbox: true,
+    captions: true,
+  };
+}
+
 export function defaultContentConfig(): ContentConfig {
   return {
     loader: glob({ base: "./content/books" }),
@@ -151,6 +222,9 @@ export function defaultContentConfig(): ContentConfig {
     remarkPlugins: [],
     rehypePlugins: [],
     sanitize: {},
+    images: defaultImageOptions(),
+    assets: { route: "_assets", extensions: [...DEFAULT_ASSET_EXTENSIONS] },
+    math: false,
     includeDrafts: isDev(),
     cacheDir:
       (typeof process !== "undefined" && process.env?.ZREADER_CACHE_DIR) || "node_modules/.cache/zreader",
@@ -232,6 +306,8 @@ const clientSchema = z
       enabled: z.boolean(),
       scopes: z.array(z.enum(["global", "book", "chapter"])).min(1, "must be non-empty"),
     }),
+    userImages: z.object({ enabled: z.boolean(), maxBytes: z.number().int().positive() }),
+    offline: z.object({ enabled: z.boolean(), serviceWorker: z.string().startsWith("/") }),
     themes: z.array(themeName).min(1),
     defaultTheme: themeName,
     defaultSettings: z.object({
@@ -275,7 +351,34 @@ const contentSchema = z.object({
     allowIframes: z.array(z.string()).optional(),
     allowTags: z.array(z.string()).optional(),
     allowAttributes: z.array(z.string()).optional(),
+    svg: z.boolean().optional(),
   }),
+  images: z.object({
+    allowRemote: z.union([z.boolean(), z.array(z.string().min(1))]),
+    allowDataUri: z.boolean(),
+    maxDataUriBytes: z.number().int().positive(),
+    maxDataUriTotalBytes: z.number().int().positive().optional(),
+    warnDataUriTotalBytes: z.number().int().positive(),
+    allowSvgDataUri: z.boolean(),
+    probeRemote: z.boolean(),
+    probeTimeoutMs: z.number().int().positive(),
+    lazy: z.boolean(),
+    lightbox: z.boolean(),
+    captions: z.boolean(),
+  }),
+  assets: z.object({
+    route: z.string().regex(/^[a-z0-9_-]+$/i, "use letters, digits, '-' or '_'"),
+    extensions: z.array(z.string().regex(/^[a-z0-9]+$/i, "no dots, e.g. \"png\"")).min(1),
+  }),
+  math: z.union([
+    z.literal(false),
+    z.enum(MATH_ENGINES),
+    z.object({
+      engine: z.enum(MATH_ENGINES),
+      options: z.record(z.string(), z.unknown()).optional(),
+      macros: z.record(z.string(), z.string()).optional(),
+    }),
+  ]),
   includeDrafts: z.boolean(),
   cacheDir: z.string(),
 });

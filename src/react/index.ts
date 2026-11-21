@@ -2,6 +2,9 @@ export {
   ReaderProvider,
   useReader,
   useReaderStore,
+  useBlobStore,
+  useBlobUrl,
+  useBlobUsage,
   useSettings,
   useHighlights,
   useBookmarks,
@@ -25,6 +28,7 @@ export {
   BookShelf,
   BookHome,
   BookContents,
+  BookCover,
   type BookNavProps,
   type BookShelfProps,
   type BookHomeProps,
@@ -37,10 +41,13 @@ export { SettingsPanel, type SettingsPanelProps } from "./components/settings-pa
 export { ScratchpadPanel, scopeFor, scopeKey, type ScratchpadPanelProps } from "./components/scratchpad-panel";
 export { ResponsivePanel, type ResponsivePanelProps } from "./components/responsive-panel";
 export { useChapterEngine, useValueStore, type ChapterEngine, type ChapterEngineOptions, type SelectionState } from "./useChapterEngine";
-export { DefaultLink, defaultHref, type LinkComponent } from "./link";
+export { DefaultLink, DefaultImage, defaultHref, type LinkComponent, type ImageComponent } from "./link";
 export { groupByPart, chapterMarker, type PartGroup } from "./parts";
 export { downloadFile, copyText } from "./download";
-export { Callout, type CalloutProps } from "./components/mdx";
+export { ImageViewer, useImageViewer, describeImage, ZOOMABLE_SELECTOR, type ImageViewerProps, type ViewerImage } from "./components/image-viewer";
+export { SaveOffline, useOfflineBook, type OfflineStatus } from "./components/offline";
+export { BlobImage, useAddImage, imageFiles, noteImages, noteText, type BlobImageProps } from "./components/blob-image";
+export { Callout, ZImage, type CalloutProps, type ZImageProps } from "./components/mdx";
 export * from "./tokens";
 export type {
   BookMeta,

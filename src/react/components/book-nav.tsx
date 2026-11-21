@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBook, useBookmarks, useHighlights, useHydrated, useLibrary, useProgress, type HrefFor } from "../context";
 import type { LinkComponent } from "../link";
+import { SaveOffline } from "./offline";
 import { chapterMarker, groupByPart } from "../parts";
 
 export interface BookNavProps {
@@ -177,18 +178,32 @@ export function BookShelf({ books: booksProp, Link: LinkProp, hrefFor, title = "
   );
 }
 
+/** A book cover in a fixed 2:3 box. Decorative next to the title, so `alt` is empty. */
+export function BookCover({ book, className, sizes }: { book: BookMeta; className?: string; sizes?: string }) {
+  const { Image } = useLibrary();
+  if (!book.cover) return null;
+  return (
+    <div className={cn("relative aspect-[2/3] shrink-0 overflow-hidden rounded-md bg-muted shadow-sm ring-1 ring-border", className)}>
+      <Image src={book.cover} alt="" sizes={sizes} className="object-cover" />
+    </div>
+  );
+}
+
 function BookCard({ book, Link, href, hydrated }: { book: BookMeta; Link: LinkComponent; href: string; hydrated: boolean }) {
   const progress = useProgress(book.id);
   const done = hydrated ? book.chapters.filter((c) => progress.chapters[c.id]?.completed).length : 0;
   return (
     <Card className="relative h-full gap-4 transition-shadow hover:shadow-md">
-      <CardHeader>
-        <CardTitle className="font-serif text-xl">
-          <Link href={href} className="after:absolute after:inset-0 focus-visible:outline-none">
-            {book.title}
-          </Link>
-        </CardTitle>
-        {book.authors.length > 0 && <CardDescription>{book.authors.join(", ")}</CardDescription>}
+      <CardHeader className={cn(book.cover && "flex items-start gap-4")}>
+        <BookCover book={book} className="w-16" sizes="64px" />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <CardTitle className="font-serif text-xl">
+            <Link href={href} className="after:absolute after:inset-0 focus-visible:outline-none">
+              {book.title}
+            </Link>
+          </CardTitle>
+          {book.authors.length > 0 && <CardDescription>{book.authors.join(", ")}</CardDescription>}
+        </div>
       </CardHeader>
       {book.description && (
         <CardContent>
@@ -220,6 +235,7 @@ export function BookHome({ book: bookArg, Link: LinkProp, hrefFor, backHref, bac
   if (embedded) {
     return (
       <div data-zr-reader="" className={cn("flex flex-col gap-8 text-foreground", className)}>
+        <SaveOffline book={book} className="self-start" />
         <ContinueReading book={book} Link={Link} hrefFor={hrefFor} />
         <section className="flex flex-col gap-3" aria-labelledby="zr-chapters">
           <h2 id="zr-chapters" className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
@@ -240,11 +256,15 @@ export function BookHome({ book: bookArg, Link: LinkProp, hrefFor, backHref, bac
             </Link>
           </Button>
         )}
-        <header className="flex flex-col gap-3">
-          <h1 className="font-serif text-3xl font-semibold tracking-tight text-balance sm:text-5xl">{book.title}</h1>
-          {book.subtitle && <p className="font-serif text-xl text-balance text-foreground/80 sm:text-2xl">{book.subtitle}</p>}
-          {book.authors.length > 0 && <p className="text-muted-foreground">{book.authors.join(", ")}</p>}
-          {book.description && <p className="max-w-prose text-lg text-foreground/80">{book.description}</p>}
+        <header className={cn("flex flex-col gap-6", book.cover && "sm:flex-row sm:items-start")}>
+          <BookCover book={book} className="w-32 sm:w-40" sizes="(min-width: 640px) 160px, 128px" />
+          <div className="flex min-w-0 flex-col gap-3">
+            <h1 className="font-serif text-3xl font-semibold tracking-tight text-balance sm:text-5xl">{book.title}</h1>
+            {book.subtitle && <p className="font-serif text-xl text-balance text-foreground/80 sm:text-2xl">{book.subtitle}</p>}
+            {book.authors.length > 0 && <p className="text-muted-foreground">{book.authors.join(", ")}</p>}
+            {book.description && <p className="max-w-prose text-lg text-foreground/80">{book.description}</p>}
+            <SaveOffline book={book} className="self-start" />
+          </div>
         </header>
         <ContinueReading book={book} Link={Link} hrefFor={hrefFor} />
         <section className="flex flex-col gap-3" aria-labelledby="zr-chapters">

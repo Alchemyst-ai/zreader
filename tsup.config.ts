@@ -35,6 +35,7 @@ export default defineConfig([
       "content/index": "src/content/index.ts",
       "next/server/index": "src/next/server/index.tsx",
       "rehype/index": "src/rehype/index.ts",
+      "sw/index": "src/sw/index.ts",
       "agent/index": "src/agent/index.ts",
       "plugins/agent/index": "src/plugins/agent/index.ts",
       "virtual-config/index": "src/virtual-config/index.ts",

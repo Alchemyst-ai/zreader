@@ -131,7 +131,8 @@ A server component that loads a chapter with the shelf's `getChapter()`, compile
 | --- | --- |
 | `book`, `chapter` | Route params |
 | `shelf` | Bookshelf id. Default: the first shelf in `reader.config.ts` |
-| `components` | Extra MDX components, merged over the defaults (`{ Callout }`, also exported as `mdxComponents`) |
+| `components` | Extra components, merged over the defaults (`{ Callout }`, also exported as `mdxComponents`, and an `img` that renders through `next/image`). They apply to MDX chapters and, by tag name, to Markdown and HTML chapters, which `ReaderChapter` renders as React. See [Images](./images.md#nextjs) |
+| `lightbox` | Open block images in the full-screen viewer. Default `true` |
 | `header` | Top-bar content for this chapter (a node) |
 | `actions` | Replaces `readerActions` for this chapter; `null` hides them |
 | …`<Reader>` props | `prev`, `next`, `backHref`, `className` |
@@ -142,7 +143,10 @@ A server component that loads a chapter with the shelf's `getChapter()`, compile
 | --- | --- |
 | `getBookParams(shelf?)` | `[{ book }]` for `app/books/[book]/page.tsx` |
 | `getChapterParams(shelf?)` | `[{ book, chapter }]` for `app/books/[book]/[chapter]/page.tsx` |
-| `agentMatcher(shelf)` | The proxy matcher a shelf needs — what the development warning suggests |
+| `agentMatcher(shelf)` | The proxy matcher a shelf needs — what the development warning suggests (includes the `_assets` route) |
+| `serviceWorkerRoute(opts?)` | `{ GET }` for `app/zreader-sw.js/route.ts`: the [offline reading](./reader-features.md#offline-reading) worker |
+| `assetRoute(shelf?)` | `{ GET, HEAD }` route handlers serving book images, for apps without the proxy. See [Images](./images.md#serving-them) |
+| `createReaderImage(images)`, `imageDecision(src, hasSrcset, images)` | The `next/image` component `ReaderChapter` uses for chapter images, and how it picks optimized, `unoptimized` or `<img>` |
 | `mdxComponents` | `{ Callout }` |
 | `readerConfig`, `getClientOptions(shelf?)` | The resolved config and one shelf's client half |
 | `NextReaderProvider` (`zreader/next/client`) | `ReaderProvider` bound to `next/link` |

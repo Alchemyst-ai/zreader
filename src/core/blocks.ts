@@ -16,6 +16,7 @@ export const BLOCK_TAG_NAMES = [
   "li",
   "blockquote",
   "pre",
+  "figure",
   "figcaption",
   "td",
   "th",
@@ -28,6 +29,32 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set(BLOCK_TAG_NAMES);
 /** Collapse whitespace the same way on the server (hast) and in the DOM. */
 export function normalizeBlockText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/** File name of an image URL, without query or hash (`/a/b/diagram.png?v=1` → `diagram.png`). */
+function fileName(src: string): string {
+  const path = src.split(/[?#]/)[0] ?? "";
+  if (/^data:/i.test(src)) return "";
+  const last = path.split("/").filter(Boolean).pop() ?? "";
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+/** What identifies an image in a block id: its alt text, else its file name. */
+export function imageKey(alt: string | null | undefined, src: string | null | undefined): string {
+  return normalizeBlockText(alt ?? "") || fileName(src ?? "") || "image";
+}
+
+/**
+ * Stand-in text for a block with no text of its own (an image alone in a
+ * paragraph, a figure without a caption), so it still gets a stable id and an
+ * excerpt. Never indexed for highlights.
+ */
+export function mediaBlockText(keys: string[]): string {
+  return keys.length ? keys.map((k) => `Image: ${k}`).join(" · ") : "";
 }
 
 /** cyrb53: a fast, well-distributed 53-bit string hash (public domain). */
