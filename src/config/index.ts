@@ -297,6 +297,16 @@ export function applyDisables(plugins: AgentPlugin[]): AgentPlugin[] {
 
 const themeName = z.enum(THEMES);
 const highlightColor = z.enum(HIGHLIGHT_COLORS);
+const sandboxPlacement = z.union([z.literal("browser"), z.literal(false)], { error: 'use "browser" or false' });
+const dangerousPermissions = z
+  .object({
+    network: z.union([z.literal(true), z.array(z.string().regex(/^https?:\/\/(\*\.)?[^/\s*;,']+\/?$/))], {
+      error: "use true or a list of origins such as https://api.example.com",
+    }),
+    packages: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "use a package name such as numpy")),
+  })
+  .partial()
+  .strict();
 const clientSchema = z
   .object({
     storagePrefix: z.string().regex(/^[a-z0-9_-]+$/i, "use letters, digits, '-' or '_'"),
@@ -320,6 +330,14 @@ const clientSchema = z
     progress: z.object({ completeAt: z.number().gt(0).max(1), saveIntervalMs: z.number().min(100) }),
     backupReminder: z.boolean(),
     basePath: z.string().startsWith("/"),
+    sandbox: z.object({
+      scopes: z.object({ global: sandboxPlacement, book: sandboxPlacement, chapter: sandboxPlacement }),
+      kernel: z.object({
+        idleTimeoutMs: z.union([z.literal(false), z.number().int().min(0)], { error: "use milliseconds, or 0 or false for never" }),
+        runTimeoutMs: z.union([z.literal(false), z.number().int().min(100)], { error: "use milliseconds (at least 100), or false for no limit" }),
+      }),
+      permissions: z.object({ scratchpad: z.object({ dangerousPermissions }) }),
+    }),
   })
   .refine((c) => c.highlightColors.includes(c.defaultHighlightColor), {
     message: "defaultHighlightColor must be one of highlightColors",

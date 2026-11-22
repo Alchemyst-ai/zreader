@@ -236,6 +236,104 @@
   outline: 2px solid var(--zr-ring, currentColor);
   outline-offset: 1px;
 }
+/* RunnableCode: code the reader can run, with the Output of its last run. */
+.zr-editor .zr-runnable {
+  margin-block: 0.75rem;
+  border: 1px solid var(--zr-border, color-mix(in oklab, currentColor 20%, transparent));
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.zr-editor .zr-runnable-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--zr-border, color-mix(in oklab, currentColor 20%, transparent));
+  background: color-mix(in oklab, currentColor 4%, transparent);
+}
+.zr-editor .zr-runnable-language {
+  font: inherit;
+  background: transparent;
+  color: inherit;
+  border: 0;
+}
+.zr-editor .zr-runnable-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--zr-muted, color-mix(in oklab, currentColor 60%, transparent));
+}
+.zr-editor .zr-runnable-button {
+  font: inherit;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--zr-border, color-mix(in oklab, currentColor 20%, transparent));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.zr-editor .zr-runnable-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.zr-editor .zr-runnable-button:focus-visible,
+.zr-editor .zr-runnable-language:focus-visible {
+  outline: 2px solid var(--zr-ring, currentColor);
+}
+.zr-editor .zr-runnable-code {
+  margin: 0;
+  border-radius: 0;
+}
+.zr-editor .zr-runnable-output {
+  padding: 0.375rem 0.75rem;
+  font-family: var(--zr-font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  border-top: 1px dashed var(--zr-border, color-mix(in oklab, currentColor 20%, transparent));
+  max-height: 20rem;
+  overflow: auto;
+}
+.zr-editor .zr-runnable-output-text {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.zr-editor .zr-runnable-output-text:empty {
+  display: none;
+}
+.zr-editor .zr-runnable-displays:empty {
+  display: none;
+}
+.zr-editor img.zr-runnable-display {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 0.375rem;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+.zr-editor img.zr-runnable-display[data-state="missing"] {
+  display: none;
+}
+.zr-editor .zr-runnable-stderr {
+  color: var(--zr-destructive, #b91c1c);
+}
+.zr-editor .zr-runnable-notice {
+  margin: 0.25rem 0 0;
+  font-family: inherit;
+  font-style: italic;
+  color: var(--zr-muted, color-mix(in oklab, currentColor 60%, transparent));
+}
+.zr-editor .zr-runnable-notice:empty {
+  display: none;
+}
+.zr-editor .zr-runnable[data-stale="true"] .zr-runnable-output {
+  opacity: 0.6;
+}
 .zr-editor .zr-pad-math-input {
   font-family: var(--zr-font-mono, ui-monospace, monospace);
   font-size: 0.9em;

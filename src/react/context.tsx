@@ -14,9 +14,12 @@ import {
   createLocalStorageAdapter,
   createReaderStore,
   createBlobStore,
+  connectSandbox,
   parseBlobUrl,
   type BlobStore,
   type MathLoader,
+  type SandboxConnection,
+  type SandboxLoader,
   type BlobUsage,
   type Cell,
   type ReaderStore,
@@ -81,6 +84,9 @@ interface ReaderContextValue {
   /** Renders TeX in the scratchpad, when the app provides an engine. */
   math: MathLoader | null;
   setMath: (loader: MathLoader | null) => void;
+  /** Runs RunnableCode, when the app provides a Sandbox. */
+  sandbox: SandboxConnection | null;
+  setSandbox: (loader: SandboxLoader | null) => void;
   options: ReaderClientOptions;
   library: Library;
 }
@@ -106,6 +112,13 @@ export interface ReaderProviderProps {
    * `loadMath` from `zreader/math/katex`. Or render `<ScratchpadMath />` inside the provider.
    */
   math?: MathLoader;
+  /**
+   * RunnableCode in the scratchpad: a Sandbox that runs it, such as
+   * `browserSandbox()` from `zreader/sandbox/browser`. Or render
+   * `<ScratchpadSandbox />` inside the provider. Without one, RunnableCode
+   * shows as plain code blocks.
+   */
+  sandbox?: SandboxLoader;
   /**
    * Manage the colour theme with next-themes (class on <html>, no-flash script).
    * Set to `false` if your app already renders a next-themes <ThemeProvider>.
@@ -146,6 +159,7 @@ export function ReaderProvider({
   onStorageError,
   blobStore,
   math: mathProp,
+  sandbox: sandboxProp,
   manageTheme = true,
   toaster = true,
   books,
@@ -172,6 +186,18 @@ export function ReaderProvider({
   const [registered, setMath] = useState<MathLoader | null>(null);
   const math = mathProp ?? registered;
   const setMathLoader = useCallback((l: MathLoader | null) => setMath(() => l), []);
+  const [registeredSandbox, setRegisteredSandbox] = useState<SandboxLoader | null>(null);
+  const sandboxLoader = sandboxProp ?? registeredSandbox;
+  const setSandbox = useCallback((l: SandboxLoader | null) => setRegisteredSandbox(() => l), []);
+  // The provider owns the connection: one client per loader, disposed when the loader goes away.
+  // A change of settings (e.g. another shelf's) restarts the Kernels with the new ones.
+  const sandboxSettings = JSON.stringify([resolved.sandbox.kernel, resolved.sandbox.permissions]);
+  const sandbox = useMemo(() => {
+    if (!sandboxLoader) return null;
+    const [kernel, permissions] = JSON.parse(sandboxSettings) as [ReaderClientOptions["sandbox"]["kernel"], ReaderClientOptions["sandbox"]["permissions"]];
+    return connectSandbox(sandboxLoader, { ...kernel, permissions });
+  }, [sandboxLoader, sandboxSettings]);
+  useEffect(() => () => sandbox?.dispose(), [sandbox]);
   const library = useMemo<Library>(() => {
     const list = books ?? [];
     const byId = new Map(list.map((b) => [b.id, b]));
@@ -186,8 +212,8 @@ export function ReaderProvider({
     };
   }, [books, Link, Image, hrefFor, headerSlot, readerActions, resolved.basePath]);
   const value = useMemo(
-    () => ({ store, blobs, math, setMath: setMathLoader, options: resolved, library }),
-    [store, blobs, math, setMathLoader, resolved, library],
+    () => ({ store, blobs, math, setMath: setMathLoader, sandbox, setSandbox, options: resolved, library }),
+    [store, blobs, math, setMathLoader, sandbox, setSandbox, resolved, library],
   );
 
   // §10.3: outside its basePath every `hrefFor` link is wrong (a renamed
@@ -277,6 +303,20 @@ export function useRegisterMath(loader: MathLoader) {
     setMath(loader);
     return () => setMath(null);
   }, [setMath, loader]);
+}
+
+/** The Sandbox that runs RunnableCode, or `null` when the app provides none. */
+export function useSandbox(): SandboxConnection | null {
+  return useReader().sandbox;
+}
+
+/** Turn on RunnableCode with `loader` while the calling component is mounted. */
+export function useRegisterSandbox(loader: SandboxLoader) {
+  const { setSandbox } = useReader();
+  useEffect(() => {
+    setSandbox(loader);
+    return () => setSandbox(null);
+  }, [setSandbox, loader]);
 }
 
 export function useBlobStore(): BlobStore {

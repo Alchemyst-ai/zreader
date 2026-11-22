@@ -9,6 +9,9 @@ import { defineConfig, type Options } from "tsup";
 const external = [
   /^zreader(\/.*)?$/,
   /^@tiptap\//,
+  // Loaded on demand by zreader/sandbox/browser; the app's bundler code-splits them.
+  "acorn",
+  "sucrase",
   "react",
   "react-dom",
   "react/jsx-runtime",
@@ -65,6 +68,7 @@ export default defineConfig([
       "agent/react/index": "src/agent/react/index.ts",
       "math/katex": "src/math/katex.tsx",
       "math/temml": "src/math/temml.tsx",
+      "sandbox/browser/index": "src/sandbox/browser/index.tsx",
     },
     // Unsplit so every client entry file can carry the directive (see scripts/use-client.mjs).
     splitting: false,

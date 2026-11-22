@@ -61,6 +61,7 @@ The reader attaches highlights, notes, bookmarks and progress to **blocks**: par
 | `zreader/next`, `zreader/next/server` | `zreader/editor` (scratchpad) |
 | `zreader/config` | `zreader` core (store, anchoring, blob store) |
 | `zreader/sw` (the worker script, served by your server) | `zreader/math/katex`, `zreader/math/temml` (scratchpad math) |
+| | `zreader/sandbox/browser` (runnable code in the scratchpad) |
 | Image measuring, math typesetting (at compile time) | The image viewer, reader images (IndexedDB), the offline worker |
 
 The server-only entry points resolve to a stub that throws in browser bundles, so importing them from client code fails loudly instead of shipping Node code. A build check keeps `zreader/react`, `zreader/editor`, `zreader/agent/react`, `zreader/rehype` and the core free of Next.js and Node built-ins.

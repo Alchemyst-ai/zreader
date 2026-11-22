@@ -22,6 +22,7 @@ Runnable apps: [`examples/next-shadcn`](./examples/next-shadcn) and [`examples/v
 - **Bookmarks** on any block, including images and display formulas, with an excerpt and an undo.
 - **Reading progress** that resumes where they left off and marks chapters read.
 - **A WYSIWYG Markdown scratchpad** (Tiptap) with checklists — a pad per chapter, per book and a global one, and highlights quote straight into it. Images pasted into the pad or a note are kept in the browser (IndexedDB), and with [scratchpad math](./docs/math.md#in-the-scratchpad) `$…$` renders as formulas you can click to edit.
+- **[Runnable code](./docs/sandbox.md)** in the pad (opt-in): Python, JavaScript and TypeScript that run in the reader's own browser, notebook-style, with plots, kept in the pad's Markdown.
 - **A full-screen image viewer** with pinch and wheel zoom.
 - **Offline reading** (opt-in): save a whole book, images included.
 - **Reading settings**: theme (light, sepia, dark), text size, line spacing, line width and font.
@@ -146,6 +147,7 @@ import "zreader/styles.css";
 - [Formats: Markdown, MDX, HTML, PDF](./docs/formats.md) — what each format does in the reader and in its `.md` twin
 - [Images](./docs/images.md) — files next to chapters, URLs, base64, sizes, `next/image`, the viewer, covers
 - [Math](./docs/math.md) — KaTeX, Temml or MathJax in chapters, and math in the scratchpad
+- [Runnable code](./docs/sandbox.md) — Python, JavaScript and TypeScript readers run in the scratchpad, permissions, self-hosting Pyodide
 
 **Make it agent-readable**
 

@@ -224,3 +224,67 @@ describe("withReader / applyReaderConfig", () => {
     expect(out.webpack!({} as never, {} as never)).toMatchObject({ marked: true });
   });
 });
+
+describe("config: sandbox", () => {
+  const shelfOf = (id: string, basePath: string, extra: Record<string, unknown> = {}) => ({ id, basePath, ...extra });
+
+  it("allows RunnableCode in every pad scope, with 15-minute idle and 30-second run timeouts, and no Dangerous permissions", () => {
+    const { sandbox } = resolveConfig({}, null, { root: "/proj" }).reader;
+    expect(sandbox.scopes).toEqual({ global: "browser", book: "browser", chapter: "browser" });
+    expect(sandbox.kernel).toEqual({ idleTimeoutMs: 900_000, runTimeoutMs: 30_000 });
+    expect(sandbox.permissions.scratchpad.dangerousPermissions).toEqual({});
+  });
+
+  it("lets a shelf replace the site's values, key by key", () => {
+    const c = resolveConfig(
+      {
+        reader: { sandbox: { scopes: { global: false }, kernel: { idleTimeoutMs: 0 } } },
+        bookshelves: [
+          shelfOf("books", "/books"),
+          shelfOf("lab", "/lab", { reader: { sandbox: { scopes: { global: "browser" }, kernel: { runTimeoutMs: false }, permissions: { scratchpad: { dangerousPermissions: { network: ["https://api.example.com"] } } } } } }),
+        ],
+      },
+      null,
+      { root: "/proj" },
+    );
+    const [books, lab] = c.shelves;
+    expect(books!.reader.sandbox.scopes.global).toBe(false);
+    expect(books!.reader.sandbox.kernel).toEqual({ idleTimeoutMs: 0, runTimeoutMs: 30_000 });
+    expect(lab!.reader.sandbox.scopes).toEqual({ global: "browser", book: "browser", chapter: "browser" });
+    expect(lab!.reader.sandbox.kernel).toEqual({ idleTimeoutMs: 0, runTimeoutMs: false });
+    expect(lab!.reader.sandbox.permissions.scratchpad.dangerousPermissions.network).toEqual(["https://api.example.com"]);
+  });
+
+  it("rejects invalid sandbox values with readable paths", () => {
+    try {
+      resolveConfig(
+        {
+          reader: {
+            sandbox: {
+              scopes: { book: "server" as never },
+              kernel: { runTimeoutMs: 5 },
+              permissions: { scratchpad: { dangerousPermissions: { network: ["api.example.com/path"], packages: ["rich; rm -rf"], fs: true } as never } },
+            },
+          },
+        },
+        null,
+        { source: "reader.config.ts" },
+      );
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ReaderConfigError);
+      const msg = (e as Error).message;
+      expect(msg).toContain('reader.sandbox.scopes.book: use "browser" or false');
+      expect(msg).toContain("reader.sandbox.kernel.runTimeoutMs: use milliseconds (at least 100)");
+      expect(msg).toContain("network: use true or a list of origins such as https://api.example.com");
+      expect(msg).toContain("use a package name such as numpy");
+      expect(msg).toContain("dangerousPermissions");
+    }
+  });
+
+  it("sends the sandbox limits to the browser with the client options", async () => {
+    const { clientOptions } = await import("../src/config/index");
+    const c = resolveConfig({ reader: { sandbox: { permissions: { scratchpad: { dangerousPermissions: { packages: ["rich"] } } } } } }, null, { root: "/proj" });
+    expect(JSON.parse(JSON.stringify(clientOptions(c))).sandbox.permissions.scratchpad.dangerousPermissions).toEqual({ packages: ["rich"] });
+  });
+});

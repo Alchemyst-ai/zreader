@@ -231,8 +231,14 @@ Any object with a zod-style `safeParse` works. Custom fields end up in `chapter.
 | `progress.completeAt` | number (0–1] | `0.9` | Scroll fraction at which a chapter counts as read |
 | `progress.saveIntervalMs` | number ≥ 100 | `1000` | How often reading position is saved |
 | `backupReminder` | boolean | `true` | Remind readers that their notes live only in this browser |
+| `sandbox.scopes.global` / `.book` / `.chapter` | `"browser"` or `false` | `"browser"` | Where RunnableCode in that kind of pad runs; `false` shows it as plain code (see [Runnable code](./sandbox.md)) |
+| `sandbox.kernel.idleTimeoutMs` | number or `false` | 15 minutes | Shut down a Kernel with no run for this long; `0` or `false`: never |
+| `sandbox.kernel.runTimeoutMs` | number ≥ 100 or `false` | 30 seconds | Stop a run that takes longer |
+| `sandbox.permissions.scratchpad.dangerousPermissions` | `{ network?: string[] \| true; packages?: string[] }` | `{}` | Network origins and Python packages readers' code may use. Off by default |
 
 `defaultSettings` are the starting values; each reader's own choices are saved and win.
+
+`sandbox` only limits RunnableCode. It's turned on in the browser, with `<ScratchpadSandbox />` or `<ReaderProvider sandbox>`, because a config file can't hand the browser a module.
 
 ## Validation errors
 
