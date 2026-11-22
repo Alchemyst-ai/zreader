@@ -332,6 +332,7 @@ const clientSchema = z
     basePath: z.string().startsWith("/"),
     sandbox: z.object({
       scopes: z.object({ global: sandboxPlacement, book: sandboxPlacement, chapter: sandboxPlacement }),
+      chapters: sandboxPlacement,
       kernel: z.object({
         idleTimeoutMs: z.union([z.literal(false), z.number().int().min(0)], { error: "use milliseconds, or 0 or false for never" }),
         runTimeoutMs: z.union([z.literal(false), z.number().int().min(100)], { error: "use milliseconds (at least 100), or false for no limit" }),

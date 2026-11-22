@@ -21,6 +21,7 @@ export const DEFAULT_CLIENT_OPTIONS: ReaderClientOptions = {
   basePath: "/books",
   sandbox: {
     scopes: { global: "browser", book: "browser", chapter: "browser" },
+    chapters: "browser",
     kernel: { idleTimeoutMs: 15 * 60_000, runTimeoutMs: 30_000 },
     permissions: { scratchpad: { dangerousPermissions: {} } },
   },

@@ -264,6 +264,7 @@ export {
   type PipelineOptions,
 } from "./pipeline";
 export { sanitizeHtml } from "./sanitize";
+export { rehypeRunnable } from "./runnable";
 export {
   rehypeImages,
   checkImageUrl,

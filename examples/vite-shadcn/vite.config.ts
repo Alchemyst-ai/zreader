@@ -7,7 +7,7 @@ import remarkMath from "remark-math";
 import { defineConfig } from "vite";
 // The content layer's plugins run at build time, in Node: the same image and
 // math handling the Next.js adapter uses, applied to MDX compiled by Vite.
-import { rehypeImages, rehypeMath } from "zreader/content";
+import { rehypeImages, rehypeMath, rehypeRunnable } from "zreader/content";
 import { rehypeBlocks } from "zreader/rehype";
 
 const publicDir = fileURLToPath(new URL("./public", import.meta.url));
@@ -19,6 +19,8 @@ export default defineConfig({
       ...mdx({
         remarkPlugins: [remarkGfm, remarkMath],
         rehypePlugins: [
+          // First, while fences still carry their meta: ```python run marks RunnableCode.
+          rehypeRunnable,
           [rehypeMath, { math: { engine: "katex" } }],
           [rehypeImages, { publicDir }],
           rehypeBlocks,

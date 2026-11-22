@@ -18,15 +18,22 @@
  */
 import { Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { base64ToBlob, codeFingerprint, fenceAttr, isRunnableMeta, outputPairs, sandboxLanguage, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
+import {
+  LANGUAGE_LABELS,
+  OUTPUT_LIMIT,
+  RESTART_NOTICE,
+  TRUNCATED_MARKER,
+  isRaster,
+  newRunnableId,
+  outputText,
+  renderRunnableMarkdown,
+  truncateOutput,
+  base64ToBlob,
+  codeFingerprint, fenceAttr, isRunnableMeta, outputPairs, sandboxLanguage, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
 
 export const RUNNABLE_NODE = "runnableCode";
 
-/** Output longer than this is cut in the pad, with a marker. */
-export const OUTPUT_LIMIT = 8000;
-export const TRUNCATED_MARKER = "… [output truncated]";
-
-export const LANGUAGE_LABELS: Record<SandboxLanguage, string> = { python: "Python", javascript: "JavaScript", typescript: "TypeScript" };
+export { LANGUAGE_LABELS, OUTPUT_LIMIT, TRUNCATED_MARKER, newRunnableId, outputText, renderRunnableMarkdown, truncateOutput };
 
 /** What the RunnableCode nodes of one pad run against. */
 export interface RunnableHost {
@@ -53,16 +60,6 @@ export interface RunnableAttrs {
 }
 
 // ------------------------------------------------------------------ Markdown
-
-export function newRunnableId(): string {
-  return Math.random().toString(36).slice(2, 8).padEnd(6, "0");
-}
-
-/** Cuts Output to `OUTPUT_LIMIT` characters, marking the cut. */
-export function truncateOutput(text: string): string {
-  if (text.length <= OUTPUT_LIMIT) return text;
-  return `${text.slice(0, OUTPUT_LIMIT).replace(/\n?$/, "\n")}${TRUNCATED_MARKER}`;
-}
 
 export interface RunnableToken {
   type: typeof RUNNABLE_NODE;
@@ -134,23 +131,6 @@ export function tokenizeRunnable(src: string): RunnableToken | undefined {
   return { type: RUNNABLE_NODE, raw, language, runnableId, code: code.body, output, displays };
 }
 
-/** A backtick fence longer than any run of backticks in `text`. */
-function fenceFor(text: string): string {
-  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((r) => r.length));
-  return "`".repeat(Math.max(3, longest + 1));
-}
-
-export function renderRunnableMarkdown(attrs: Pick<RunnableAttrs, "language" | "runnableId" | "output"> & { displays?: string[] | null }, code: string): string {
-  const f = fenceFor(code);
-  const parts = [`${f}${attrs.language} run id=${attrs.runnableId}`, ...(code ? [code] : []), f];
-  if (attrs.output) {
-    const o = fenceFor(attrs.output);
-    parts.push(`${o}output for=${attrs.runnableId}`, attrs.output, o);
-  }
-  for (const src of attrs.displays ?? []) parts.push(`![output](${src})`);
-  return parts.join("\n");
-}
-
 /** Would this Markdown parse into RunnableCode when the feature is on? */
 export function markdownHasRunnable(markdown: string): boolean {
   return /^(?:[ \t]*(?:>|[-*+]|\d{1,9}[.)])(?=[ \t]|$))*[ \t]*(?:`{3,}|~{3,})[ \t]*(?:python|py|javascript|js|typescript|ts)[ \t]+(?:[^\n]*[ \t])?run(?:[ \t]|$)/im.test(markdown);
@@ -158,28 +138,7 @@ export function markdownHasRunnable(markdown: string): boolean {
 
 // ------------------------------------------------------------------ Running
 
-/** Folds a run's events into the text saved as its Output. */
-export function outputText(events: readonly RunEvent[]): string {
-  let out = "";
-  for (const e of events) {
-    if (e.type === "stdout" || e.type === "stderr") out += e.text;
-    else if (e.type === "result") out += (out && !out.endsWith("\n") ? "\n" : "") + e.text + "\n";
-    else if (e.type === "error") out += (out && !out.endsWith("\n") ? "\n" : "") + (e.traceback ?? `${e.name}: ${e.message}`) + "\n";
-  }
-  return out.replace(/\n+$/, "");
-}
-
-const RESTART_NOTICE: Record<string, string> = {
-  stopped: "Kernel restarted, variables cleared.",
-  timeout: "The run took too long and was stopped. Kernel restarted, variables cleared.",
-  idle: "The Kernel was idle and shut down. Kernel restarted, variables cleared.",
-  crashed: "The Kernel stopped unexpectedly. Kernel restarted, variables cleared.",
-};
-
 export const RUN_EVENT = "zr-runnable-run";
-
-/** Images shown and kept from a run: raster only, since an SVG could run script if opened on its own. */
-const isRaster = (mime: string) => /^image\/(png|jpeg|gif|webp)$/.test(mime);
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & Record<string, unknown> = {}, ...children: (Node | string)[]) {
   const node = document.createElement(tag);

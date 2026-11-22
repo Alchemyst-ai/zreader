@@ -231,6 +231,7 @@ describe("config: sandbox", () => {
   it("allows RunnableCode in every pad scope, with 15-minute idle and 30-second run timeouts, and no Dangerous permissions", () => {
     const { sandbox } = resolveConfig({}, null, { root: "/proj" }).reader;
     expect(sandbox.scopes).toEqual({ global: "browser", book: "browser", chapter: "browser" });
+    expect(sandbox.chapters).toBe("browser");
     expect(sandbox.kernel).toEqual({ idleTimeoutMs: 900_000, runTimeoutMs: 30_000 });
     expect(sandbox.permissions.scratchpad.dangerousPermissions).toEqual({});
   });

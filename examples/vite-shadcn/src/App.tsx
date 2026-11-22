@@ -2,7 +2,7 @@ import { Link as RouterLink, Route, Routes, useParams } from "react-router";
 import { BookOpenIcon } from "lucide-react";
 import { loadMath } from "zreader/math/katex";
 import { browserSandbox } from "zreader/sandbox/browser";
-import { BookContents, BookShelf, Callout, Reader, ReaderProvider, ZImage, type LinkComponent } from "zreader/react";
+import { BookContents, BookShelf, Callout, Reader, ReaderProvider, RunnableCode, ZImage, type LinkComponent } from "zreader/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { books, chapterContent } from "./books";
@@ -10,7 +10,7 @@ import { books, chapterContent } from "./books";
 /** zreader renders every link through this, so navigation stays client-side. */
 const Link: LinkComponent = ({ href, ...props }) => <RouterLink to={href} {...props} />;
 
-const mdxComponents = { Callout, img: ZImage };
+const mdxComponents = { Callout, RunnableCode, img: ZImage };
 
 /** RunnableCode in the scratchpad, run in the reader's browser. */
 const sandbox = browserSandbox();

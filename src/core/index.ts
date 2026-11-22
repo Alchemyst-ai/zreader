@@ -8,6 +8,7 @@ export * from "./blocks";
 export * from "./blob-store";
 export * from "./math";
 export * from "./sandbox";
+export * from "./runnable";
 export { DEFAULT_CLIENT_OPTIONS } from "./defaults";
 export {
   MIGRATIONS,

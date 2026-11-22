@@ -43,6 +43,7 @@ import { copyText } from "./download";
 import type { LinkComponent } from "./link";
 import { FONT_CLASS, LEADING_CLASS, MEASURE_CLASS, PROSE_CLASS, TEXT_SIZE_CLASS } from "./tokens";
 import { useChapterEngine, useValueStore, type ValueStore } from "./useChapterEngine";
+import { useChapterRunnables } from "./chapter-runnable";
 
 export interface ReaderProps {
   /** A book id from the provider's catalogue, or the book's metadata. */
@@ -286,6 +287,22 @@ export function Reader({
     },
     [store, padKind, book.id, chapter.id, openPad],
   );
+
+  // RunnableCode the author wrote: Copy to scratchpad goes to the chapter pad.
+  const chapterPad = padEnabled && options.scratchpad.scopes.includes("chapter");
+  useChapterRunnables(rootEl, {
+    bookId: book.id,
+    chapterId: chapter.id,
+    contentKey: html ?? contentHash,
+    copyToPad: chapterPad
+      ? (markdown) => {
+          store.appendToPad(scopeFor("chapter", book.id, chapter.id), markdown);
+          setPadKind("chapter");
+          openPad();
+          toast.success("Copied to the chapter's scratchpad");
+        }
+      : undefined,
+  });
 
   const quoteSpan = (span: TextSpan, text: string) => {
     const h = engine.createHighlight(span);

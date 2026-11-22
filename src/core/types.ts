@@ -110,6 +110,8 @@ export interface ReaderSettings {
 export interface SandboxOptions {
   /** Where RunnableCode in each kind of pad runs: `"browser"`, or `false` to show it as plain code. */
   scopes: Record<PadScopeKind, "browser" | false>;
+  /** Where RunnableCode the author wrote in chapters runs: `"browser"`, or `false` to show it as plain code. */
+  chapters: "browser" | false;
   kernel: {
     /** A Kernel with no run for this long is shut down. `0` or `false`: never. Default 15 minutes. */
     idleTimeoutMs: number | false;
