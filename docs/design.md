@@ -58,15 +58,41 @@ Highlights are anchored to **block ids** derived from each block's text (`p-3fa9
 
 ## Runnable code
 
-**The browser runs code by default.** zreader works without a server, so RunnableCode runs in the reader's browser, in an opaque-origin iframe that can't reach the page or the reader's data. WebContainers were rejected for their license, the COOP/COEP headers they need and the lack of Python ([ADR 0001](./adr/0001-browser-sandbox-by-default.md)).
+The structure is in [Architecture → The browser Sandbox](./architecture.md#the-browser-sandbox). The decisions:
 
-**Config limits, the page turns it on.** Like scratchpad math, a Sandbox is a module, so it's turned on with a component or provider prop; `reader.sandbox` only narrows where it runs and what it may do, and only the site owner grants Dangerous permissions.
+**The browser runs code by default.** zreader works without a server, so RunnableCode runs in the reader's browser: Python in Pyodide, JavaScript and TypeScript in a worker. A server Sandbox is planned as an opt-in override, not the default, because it would make the feature unusable on static and Vite sites and turn every site into a public code-execution endpoint ([ADR 0001](./adr/0001-browser-sandbox-by-default.md)).
 
-**Outputs live in the pad's Markdown**, as text with no timing, so an exported pad reads as a notebook and re-running unchanged code doesn't rewrite it ([ADR 0002](./adr/0002-outputs-stored-in-pad-markdown.md)). Images go to the reader-images store like pasted ones.
+| Option | Why not |
+| --- | --- |
+| StackBlitz WebContainers | A paid license for commercial use, with no published price, that every commercial zreader site would inherit; COOP/COEP headers on the host page, which break the embeds books use; full support only in desktop Chromium; no Python |
+| Server only | No static or Vite sites, and a public execution endpoint by default |
+| Code on the reader's page (`eval`, a same-origin worker) | It could read `localStorage` and IndexedDB, which hold every highlight and note, and the site's cookies |
 
-**Stop restarts the Kernel.** Keeping variables across an interrupt needs `SharedArrayBuffer`, and so cross-origin isolation on every reader page ([ADR 0003](./adr/0003-no-cross-origin-isolation-stop-restarts-kernel.md)).
+**Isolation comes from the browser, not from zreader's code.** Kernels run in an iframe with `sandbox="allow-scripts"` and no `allow-same-origin`, so its origin is opaque (`"null"`). Code in it can't read the reader's page, its storage or the site's cookies however it's written. The page accepts the frame's message port only from that iframe and that origin. Everything else is defence in depth on top.
 
-**JavaScript is rewritten on the page, not in the Kernel.** acorn turns top-level declarations into assignments, so a later run sees them and can declare them again, and returns the last expression. Doing it on the page keeps the Kernel small and lets acorn be code-split.
+**The network boundary is a CSP; the fetch guard only explains it.** Each frame's `connect-src` lists exactly the origins its Kernels may reach, so a blocked request fails in the browser whatever the code does. A wrapped `fetch` turns that failure into a message that names the setting to change, and rethrows any failed fetch as a fresh error, because WebKit's CSP rejection can't become a Python exception and the run hangs.
+
+**One frame per language family, one worker per Kernel.** A frame is the unit of CSP: Python needs the Pyodide origin and, when packages are granted, PyPI; JavaScript needs neither, so it doesn't get them. A worker is the unit of restart: terminating it ends one Kernel's code and state without touching the others.
+
+**The page keeps the state, the frame keeps none.** Queues, the run timeout, the idle timer and restart bookkeeping live in `KernelHost` on the page. A worker stuck in an infinite loop can't time itself out, and a frame that only starts, stops and relays has nothing to get out of sync. The run timeout starts when the code starts, after the runtime and packages have loaded, so a first Python run that downloads 10 MB isn't counted as slow code; a separate, longer load timeout covers the download.
+
+**Nothing is fetched to start a Kernel.** The frame's script and the Kernels are self-contained functions turned into source with `toString()` and loaded from `srcdoc` and blob URLs. There's no Sandbox file for the site to serve, no extra route, and no URL the CSP has to allow. The cost is that those functions can't import anything. The odd-looking steps (a CSP added from script, a classic worker that `import()`s a module, blob URLs revoked late) are workarounds for Chromium and Safari recorded in ADR 0001; don't "simplify" them.
+
+**Config limits it, the page turns it on.** Like scratchpad math, a Sandbox is a module, and a server-side config can't hand the browser a module, so it's turned on with `<ScratchpadSandbox />` or a provider prop. `reader.sandbox` only narrows where it runs (`scopes`, `chapters`), for how long (`kernel` timeouts) and what it may do.
+
+**Only the site owner grants Dangerous permissions.** Network origins and Python packages are off by default and set in `reader.config.ts`. A `book.json`, chapter frontmatter or a reader can't grant them, because the code they'd unlock is the book's or the reader's own. For the reader's own code (`codeSource: scratchpad`), checking `micropip` installs by package name is enough. For an author's code that isn't: once PyPI is allowed, code can fetch any wheel directly. So per-chapter packages will be pinned to exact wheel URLs at build time, with the CSP narrowed to those URLs ([ADR 0005](./adr/0005-chapter-packages-pinned-and-csp-enforced.md)), and per-chapter rules will match `bookId/chapterId` with the most specific rule winning, never merged ([ADR 0004](./adr/0004-permission-rules-match-ids-most-specific-wins.md)). Until those land, chapter code runs with the scratchpad's permissions.
+
+**Kernels belong to a pad or a page, in one tab.** A pad's Kernel is keyed by its scope and the tab, so two tabs never share variables. A chapter page gets its own Kernel per visit, apart from every pad, so an author's examples can't read a reader's pad variables and leaving the page ends them.
+
+**Outputs live in the pad's Markdown**, as text with no timing or status, so an exported pad reads as a notebook and re-running unchanged code doesn't rewrite it ([ADR 0002](./adr/0002-outputs-stored-in-pad-markdown.md)). Staleness is computed from a fingerprint of the code, not stored. Images go to the reader-images store like pasted ones, and only as raster formats: an SVG could run script if a reader opened it on its own. Chapter Outputs are never written back; a reader's run lasts as long as the page.
+
+**Stop restarts the Kernel.** Interrupting a run while keeping its variables needs `SharedArrayBuffer`, which needs cross-origin isolation (COOP/COEP) on every reader page, and those headers block third-party images and iframes in books ([ADR 0003](./adr/0003-no-cross-origin-isolation-stop-restarts-kernel.md)). So Stop, timeouts and idle shutdown terminate the worker, and the Output says the variables were cleared.
+
+**JavaScript is rewritten on the page, not in the Kernel.** acorn turns top-level declarations into assignments, so a later run sees them and can declare them again, returns the last expression and turns `import` into `await import()`. Doing it on the page keeps the Kernel small, lets acorn (and sucrase for TypeScript) be code-split, and reports syntax errors before anything is sent to the frame.
+
+**Runtimes are not bundled.** Pyodide is loaded by the Kernel from a pinned jsDelivr URL, or from `pyodideIndexURL` for sites that self-host. Bundling it would add tens of megabytes to the package for sites that never run Python.
+
+**The server Sandbox will leave auth to the app** ([ADR 0006](./adr/0006-server-sandbox-auth-is-the-apps-job.md)). zreader has no accounts, sessions or quotas, and the app that mounts the route already has auth. It will take an optional `authorize(request, run)` callback rather than refusing to run without one or shipping its own rate limits.
 
 ## Storage
 
@@ -92,6 +118,8 @@ Every page has a `.md` twin produced from the **source**, not the rendered HTML,
 - **No sync service.** Reader data stays local; backups move it.
 - **No inline styles in sanitized content**, even for math or SVG. Features that need them are done another way (MathML) or limited to MDX.
 - **No math engine in the browser by default.** Chapter math costs readers nothing; pad math is a choice the site makes.
+- **No WebContainers and no cross-origin isolation.** Runnable code works on any host page, embeds included, and Stop restarts the Kernel instead of interrupting it.
+- **No code on the reader's page.** Every run goes through the opaque-origin frame, even for the reader's own code, because the page holds all of their data.
 
 ## Further reading
 

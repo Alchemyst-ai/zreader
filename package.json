@@ -1,6 +1,6 @@
 {
   "name": "zreader",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A localStorage-first, mobile-first book reader: chapters, bookmarks, sentence highlights, notes, reading progress and a WYSIWYG markdown scratchpad.",
   "license": "MIT",
   "author": "Alchemyst AI",
