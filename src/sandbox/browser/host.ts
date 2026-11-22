@@ -13,8 +13,10 @@ export interface KernelHostOptions {
   openFrame(): Promise<{ port: MessagePort; close(): void }>;
   /** Turns a run's code into what the Kernel executes (rewriting JavaScript, stripping types). */
   prepare(language: SandboxLanguage, code: string): Promise<string>;
-  /** A run longer than this restarts its Kernel. `0` or `false`: no limit. */
+  /** A run longer than this restarts its Kernel. `0` or `false`: no limit. Counted from when the code starts, not while the runtime loads. */
   runTimeoutMs: number | false;
+  /** How long a Kernel may take to load its runtime and packages before the run is stopped. Default 2 minutes. */
+  loadTimeoutMs?: number;
   /** A Kernel with no run for this long is shut down. `0` or `false`: never. */
   idleTimeoutMs: number | false;
 }
@@ -60,6 +62,7 @@ class EventStream {
 
 interface ActiveRun {
   runId: number;
+  key: string;
   stream: EventStream;
   timer?: ReturnType<typeof setTimeout>;
 }
@@ -103,6 +106,12 @@ export class KernelHost implements SandboxClient {
     if (m.type === "event") {
       const run = this.runs.get(m.runId);
       if (!run) return;
+      if (m.event.type === "started") {
+        const limit = this.options.runTimeoutMs;
+        clearTimeout(run.timer);
+        if (limit) run.timer = setTimeout(() => this.restartKey(run.key, "timeout"), limit);
+        return;
+      }
       run.stream.push(m.event as RunEvent);
       if (m.event.type === "exit") this.finish(run);
     } else if (m.type === "crashed") {
@@ -191,7 +200,7 @@ export class KernelHost implements SandboxClient {
         state.idleRestarted = false;
         stream.push({ type: "restarted", reason: "idle" });
       }
-      const run: ActiveRun = { runId: ++this.seq, stream };
+      const run: ActiveRun = { runId: ++this.seq, key, stream };
       state.active = run;
       this.runs.set(run.runId, run);
       try {
@@ -202,8 +211,8 @@ export class KernelHost implements SandboxClient {
         this.finish(run);
         return;
       }
-      const limit = this.options.runTimeoutMs;
-      if (limit) run.timer = setTimeout(() => this.restartKey(key, "timeout"), limit);
+      // Until the Kernel says the code started, allow for the runtime to download.
+      run.timer = setTimeout(() => this.restartKey(key, "timeout"), this.options.loadTimeoutMs ?? 120_000);
       this.send({ type: "run", key, language: req.language, runId: run.runId, code });
       await stream.closed;
       state.active = null;

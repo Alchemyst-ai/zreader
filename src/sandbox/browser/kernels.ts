@@ -12,7 +12,11 @@ export type ToFrame =
   | { type: "restart"; key: string }
   | { type: "dispose" };
 
-/** Messages from the frame to the page: run events carry `runId`. */
+/**
+ * Messages from the frame to the page: run events carry `runId`. Besides the
+ * RunEvents, a Kernel sends `{ type: "started" }` when the code itself starts,
+ * after the runtime and packages have loaded: the run timeout counts from there.
+ */
 export type FromFrame =
   | { type: "event"; runId: number; event: Record<string, unknown> & { type: string } }
   | { type: "crashed"; key: string; message: string };
@@ -143,6 +147,7 @@ export function javascriptKernel() {
     if (m.type !== "run") return;
     runId = m.runId;
     const t0 = performance.now();
+    post({ type: "started" });
     try {
       const value = await new AsyncFunction(m.code)();
       if (value !== undefined) post({ type: "result", text: format(value, false) });
@@ -150,6 +155,73 @@ export function javascriptKernel() {
     } catch (err) {
       const x = err as Error;
       post({ type: "error", name: x?.name ?? "Error", message: String(x?.message ?? err) });
+      post({ type: "exit", ok: false, ms: Math.round(performance.now() - t0) });
+    }
+  };
+  postMessage({ type: "ready" });
+}
+
+/** The Python Kernel worker: Pyodide, loaded from `indexURL` on the first run. */
+export function pythonKernel(config: { indexURL: string }) {
+  let runId = 0;
+  const post = (event: Record<string, unknown>) => postMessage({ runId, event });
+  // WebKit rejects CSP-blocked fetches with an error Pyodide can't turn into a Python
+  // exception, which hangs the run. Rethrow a fresh one.
+  const rawFetch = self.fetch.bind(self);
+  self.fetch = (...args: Parameters<typeof fetch>) =>
+    rawFetch(...args).catch((e: unknown) => {
+      throw new TypeError(`fetch failed: ${String((e as Error)?.message ?? e)}`);
+    });
+  type Py = {
+    setStdout(o: { batched: (s: string) => void }): void;
+    setStderr(o: { batched: (s: string) => void }): void;
+    loadPackagesFromImports(code: string, o: { messageCallback: (m: string) => void; errorCallback: (m: string) => void }): Promise<unknown>;
+    runPythonAsync(code: string): Promise<unknown>;
+    globals: { get(name: string): (v: unknown) => unknown };
+  };
+  let pyodide: Promise<Py> | null = null;
+  const load = () => {
+    if (!pyodide) {
+      post({ type: "status", text: "Downloading the Python runtime (about 10 MB)…" });
+      pyodide = (import(/* webpackIgnore: true */ /* @vite-ignore */ `${config.indexURL}pyodide.mjs`) as Promise<{ loadPyodide(o: { indexURL: string }): Promise<Py> }>).then((m) =>
+        m.loadPyodide({ indexURL: config.indexURL }),
+      );
+      pyodide.catch(() => (pyodide = null));
+    }
+    return pyodide;
+  };
+  self.onmessage = async (e: MessageEvent) => {
+    const m = e.data as { type: string; runId: number; code: string };
+    if (m.type !== "run") return;
+    runId = m.runId;
+    const t0 = performance.now();
+    try {
+      const py = await load();
+      py.setStdout({ batched: (s) => post({ type: "stdout", text: `${s}\n` }) });
+      py.setStderr({ batched: (s) => post({ type: "stderr", text: `${s}\n` }) });
+      // Packages Pyodide ships (numpy, pandas, …) come from indexURL; nothing else is fetched.
+      await py.loadPackagesFromImports(m.code, { messageCallback: () => {}, errorCallback: (s) => post({ type: "stderr", text: `${s}\n` }) });
+      post({ type: "started" });
+      const value = await py.runPythonAsync(m.code);
+      if (value !== undefined) {
+        const repr = py.globals.get("repr");
+        post({ type: "result", text: String(repr(value)) });
+        (repr as unknown as { destroy?(): void }).destroy?.();
+        (value as { destroy?(): void } | null)?.destroy?.();
+      }
+      post({ type: "exit", ok: true, ms: Math.round(performance.now() - t0) });
+    } catch (err) {
+      const x = err as Error & { type?: string };
+      const text = String(x?.message ?? err).trimEnd();
+      // A PythonError's message is the whole traceback; its last line names the error.
+      const last = text.split("\n").at(-1) ?? text;
+      const colon = last.indexOf(": ");
+      post({
+        type: "error",
+        name: x?.type ?? (colon > 0 ? last.slice(0, colon) : (x?.name ?? "Error")),
+        message: colon > 0 ? last.slice(colon + 2) : last,
+        traceback: text.includes("Traceback") ? text.replace(/^[\s\S]*?(?=Traceback)/, "") : undefined,
+      });
       post({ type: "exit", ok: false, ms: Math.round(performance.now() - t0) });
     }
   };

@@ -12,7 +12,7 @@ import { useMemo } from "react";
 import type { SandboxLanguage, SandboxLoader } from "zreader";
 import { useRegisterSandbox } from "zreader/react";
 import { KernelHost, isFrameHandshake } from "./host";
-import { frameMain, javascriptKernel, sourceOf } from "./kernels";
+import { frameMain, javascriptKernel, pythonKernel, sourceOf } from "./kernels";
 import { rewriteJavaScript } from "./rewrite";
 
 export interface BrowserSandboxOptions {
@@ -22,9 +22,20 @@ export interface BrowserSandboxOptions {
   runTimeoutMs?: number | false;
   /** A Kernel with no run for this long is shut down. Default 15 minutes; `0` or `false`: never. */
   idleTimeoutMs?: number | false;
+  /**
+   * Where Pyodide (the Python runtime) is loaded from: a folder with `pyodide.mjs`,
+   * ending in "/". Defaults to a pinned jsDelivr URL. To self-host, serve the files
+   * of the `pyodide` npm package (same version) with CORS allowed, since the
+   * Sandbox frame has an opaque origin.
+   */
+  pyodideIndexURL?: string;
 }
 
-export const BROWSER_LANGUAGES: readonly SandboxLanguage[] = ["javascript"];
+export const BROWSER_LANGUAGES: readonly SandboxLanguage[] = ["python", "javascript"];
+
+/** The Pyodide release the Python Kernel is tested with. */
+export const PYODIDE_VERSION = "314.0.8";
+export const DEFAULT_PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
 export const DEFAULT_RUN_TIMEOUT_MS = 30_000;
 export const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000;
@@ -78,6 +89,15 @@ function openFrame(config: Parameters<typeof frameMain>[0]): Promise<{ port: Mes
   });
 }
 
+/** What the Sandbox frame is started with: its CSP and the Kernel sources. */
+export function frameConfig(options: BrowserSandboxOptions & { languages: readonly SandboxLanguage[] }): Parameters<typeof frameMain>[0] {
+  const indexURL = new URL(options.pyodideIndexURL ?? DEFAULT_PYODIDE_INDEX_URL, location.href).href.replace(/\/?$/, "/");
+  return {
+    csp: kernelCsp({ connect: options.languages.includes("python") ? [new URL(indexURL).origin] : [] }),
+    kernels: { javascript: sourceOf(javascriptKernel), python: sourceOf(pythonKernel, { indexURL }) },
+  };
+}
+
 /** A Sandbox that runs RunnableCode in this browser. */
 export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoader {
   const languages = (options.languages ?? BROWSER_LANGUAGES).filter((l) => BROWSER_LANGUAGES.includes(l));
@@ -89,11 +109,7 @@ export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoad
         prepare,
         runTimeoutMs: options.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
         idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
-        openFrame: () =>
-          openFrame({
-            csp: kernelCsp(),
-            kernels: { javascript: sourceOf(javascriptKernel) },
-          }),
+        openFrame: () => openFrame(frameConfig({ ...options, languages })),
       }),
   };
 }

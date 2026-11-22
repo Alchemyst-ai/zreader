@@ -63,7 +63,7 @@ const CHECKS = [
   ["Python: shows prints and the last expression", async () => {
     if (!has("python")) return [true, "skipped: no Python in this build"];
     const ev = await run("python", "x = 41\nprint('x is', x)\nx + 1");
-    return [result(ev) === "42" && stdout(ev) === "x is 41\n", result(ev) ?? error(ev)?.message];
+    return [result(ev) === "42" && stdout(ev) === "x is 41\n", result(ev) ?? error(ev)?.message ?? ev.map((e) => e.type + (e.reason ? `:${e.reason}` : "")).join(",")];
   }],
   ["Python: keeps variables between runs", async () => {
     if (!has("python")) return [true, "skipped"];
@@ -88,7 +88,7 @@ const CHECKS = [
     await client.restart("check", "python");
     const ev = await pending;
     const after = error(await run("python", "x"));
-    return [ev.at(-1)?.type === "restarted" && /NameError/.test(after?.message ?? ""), after?.message?.split("\n").at(-1) ?? "x still defined"];
+    return [ev.at(-1)?.type === "restarted" && after?.name === "NameError", after ? `${after.name}: ${after.message}` : "x still defined"];
   }],
   ["TypeScript: types are stripped and variables kept", async () => {
     if (!has("typescript")) return [true, "skipped: no TypeScript in this build"];

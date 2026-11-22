@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunEvent, RunRequest } from "../src/core/index";
 import { KernelHost, isFrameHandshake, type KernelHostOptions } from "../src/sandbox/browser/host";
-import { browserSandbox, kernelCsp } from "../src/sandbox/browser/index";
+import { DEFAULT_PYODIDE_INDEX_URL, browserSandbox, frameConfig, kernelCsp } from "../src/sandbox/browser/index";
 import type { FromFrame, ToFrame } from "../src/sandbox/browser/kernels";
 
 /**
@@ -26,10 +26,16 @@ function fakeFrame() {
       if (m.type !== "run") return;
       const n = (kernels.get(m.key) ?? 0) + 1;
       kernels.set(m.key, n);
+      const finish = () => {
+        post({ type: "event", runId: m.runId, event: { type: "stdout", text: `${m.code} #${n}\n` } });
+        post({ type: "event", runId: m.runId, event: { type: "exit", ok: true, ms: 1 } });
+      };
+      // `slowload`: the runtime takes 50 ms to load before the code starts.
+      if (m.code === "slowload") return void setTimeout(() => (post({ type: "event", runId: m.runId, event: { type: "started" } }), finish()), 50);
+      post({ type: "event", runId: m.runId, event: { type: "started" } });
       if (m.code === "hang") return;
       if (m.code === "crash") return post({ type: "crashed", key: m.key, message: "out of memory" });
-      post({ type: "event", runId: m.runId, event: { type: "stdout", text: `${m.code} #${n}\n` } });
-      post({ type: "event", runId: m.runId, event: { type: "exit", ok: true, ms: 1 } });
+      finish();
     };
     return { port: ch.port1, close: () => void closed++ };
   };
@@ -79,6 +85,12 @@ describe("browser Sandbox: Kernel host", () => {
     await h.restart("pad:global#t", "javascript");
     expect(texts(await pending)).toEqual(["restarted:stopped"]);
     expect(texts(await collect(h.run(req("b"))))[0]).toBe("stdout:b #1");
+  });
+
+  it("counts the run timeout from when the code starts, not while the runtime loads", async () => {
+    const frame = fakeFrame();
+    const h = host(frame, { runTimeoutMs: 20 });
+    expect(texts(await collect(h.run(req("slowload"))))).toEqual(["stdout:slowload #1", "exit"]);
   });
 
   it("stops a run that takes too long", async () => {
@@ -139,6 +151,15 @@ describe("browser Sandbox: setup", () => {
   it("blocks all network access by default", () => {
     expect(kernelCsp()).toBe("default-src 'none'; script-src blob: 'unsafe-eval' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'");
     expect(kernelCsp({ connect: ["https://cdn.example"] })).toContain("connect-src https://cdn.example");
+  });
+
+  it("lets Python reach only the origin Pyodide is loaded from", () => {
+    expect(frameConfig({ languages: ["python"] }).csp).toContain(`connect-src ${new URL(DEFAULT_PYODIDE_INDEX_URL).origin}`);
+    const self = frameConfig({ languages: ["python"], pyodideIndexURL: "https://static.example.org/pyodide" });
+    expect(self.csp).toMatch(/connect-src https:\/\/static\.example\.org$/);
+    expect(self.csp).not.toContain("jsdelivr");
+    expect(self.kernels.python).toContain("https://static.example.org/pyodide/");
+    expect(frameConfig({ languages: ["javascript"] }).csp).toContain("connect-src 'none'");
   });
 
   it("offers only the languages it can run", () => {
