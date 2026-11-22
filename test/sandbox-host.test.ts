@@ -167,3 +167,43 @@ describe("browser Sandbox: setup", () => {
     expect(browserSandbox({ languages: ["javascript"] }).languages).toEqual(["javascript"]);
   });
 });
+
+describe("browser Sandbox: Dangerous permissions", () => {
+  it("builds the CSP from what the site granted", () => {
+    const js = (p?: Parameters<typeof frameConfig>[0]["dangerousPermissions"]) => frameConfig({ languages: ["javascript"], dangerousPermissions: p }).csp;
+    expect(js()).toContain("connect-src 'none'");
+    expect(js({ network: ["https://api.example.com/"] })).toMatch(/connect-src https:\/\/api\.example\.com$/);
+    expect(js({ network: ["https://api.example.com"] })).toContain("script-src blob: 'unsafe-eval' 'wasm-unsafe-eval' https://api.example.com;");
+    expect(js({ network: true })).toMatch(/connect-src \*$/);
+    // Packages are a Python permission: they add PyPI only when Python is offered.
+    expect(js({ packages: ["rich"] })).toContain("connect-src 'none'");
+    const py = frameConfig({ languages: ["python"], dangerousPermissions: { packages: ["rich"] } });
+    expect(py.csp).toContain("https://pypi.org https://files.pythonhosted.org");
+    expect(py.kernels.python).toContain('"packages":["rich"]');
+    expect(frameConfig({ languages: ["python"] }).csp).not.toContain("pypi");
+  });
+
+  it("refuses fetches to origins the site didn't grant, with a message that says why", async () => {
+    const { installFetchGuard } = await import("../src/sandbox/browser/kernels");
+    const calls: string[] = [];
+    const g = globalThis as unknown as { fetch: typeof fetch };
+    const saved = g.fetch;
+    try {
+      const guard = (allowed: string[] | true) => {
+        g.fetch = (async (u: string) => (calls.push(u), new Response("ok"))) as typeof fetch;
+        installFetchGuard(allowed);
+        return g.fetch;
+      };
+      const f = guard(["https://api.example.com", "https://*.cdn.example"]);
+      await expect(f("https://api.example.com/v1")).resolves.toBeInstanceOf(Response);
+      await expect(f("https://a.cdn.example/x.js")).resolves.toBeInstanceOf(Response);
+      await expect(f("https://evil.example/")).rejects.toThrow(/Blocked by this site's permissions: code here can't reach https:\/\/evil\.example/);
+      await expect(f("http://api.example.com/")).rejects.toThrow(/Blocked/);
+      await expect(f("https://api.example.com:8443/")).rejects.toThrow(/Blocked/);
+      expect(calls).toEqual(["https://api.example.com/v1", "https://a.cdn.example/x.js"]);
+      await expect(guard(true)("https://anything.example/")).resolves.toBeInstanceOf(Response);
+    } finally {
+      g.fetch = saved;
+    }
+  });
+});

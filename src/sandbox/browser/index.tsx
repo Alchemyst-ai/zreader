@@ -9,10 +9,10 @@
  * data, and can't reach the network unless the site grants it (ADR 0001).
  */
 import { useMemo, useRef } from "react";
-import type { SandboxLanguage, SandboxLoader, SandboxSettings } from "zreader";
+import type { DangerousPermissions, SandboxLanguage, SandboxLoader, SandboxSettings } from "zreader";
 import { useRegisterSandbox } from "zreader/react";
 import { KernelHost, isFrameHandshake } from "./host";
-import { frameMain, javascriptKernel, pythonKernel, sourceOf } from "./kernels";
+import { frameMain, javascriptKernel, kernelSource, pythonKernel, sourceOf } from "./kernels";
 import { rewriteJavaScript } from "./rewrite";
 
 export interface BrowserSandboxOptions {
@@ -119,11 +119,20 @@ function openFrame(config: Parameters<typeof frameMain>[0]): Promise<{ port: Mes
 }
 
 /** What the Sandbox frame is started with: its CSP and the Kernel sources. */
-export function frameConfig(options: BrowserSandboxOptions & { languages: readonly SandboxLanguage[] }): Parameters<typeof frameMain>[0] {
+/** PyPI, which micropip needs once packages are granted. */
+export const PYPI_ORIGINS = ["https://pypi.org", "https://files.pythonhosted.org"];
+
+export function frameConfig(
+  options: BrowserSandboxOptions & { languages: readonly SandboxLanguage[]; dangerousPermissions?: DangerousPermissions },
+): Parameters<typeof frameMain>[0] {
   const indexURL = new URL(options.pyodideIndexURL ?? DEFAULT_PYODIDE_INDEX_URL, location.href).href.replace(/\/?$/, "/");
+  const network = options.dangerousPermissions?.network ?? [];
+  const packages = options.languages.includes("python") ? (options.dangerousPermissions?.packages ?? []) : [];
+  const runtime = options.languages.includes("python") ? [new URL(indexURL).origin, ...(packages.length ? PYPI_ORIGINS : [])] : [];
+  const js = kernelSource(javascriptKernel, { network });
   return {
-    csp: kernelCsp({ connect: options.languages.includes("python") ? [new URL(indexURL).origin] : [] }),
-    kernels: { javascript: sourceOf(javascriptKernel), typescript: sourceOf(javascriptKernel), python: sourceOf(pythonKernel, { indexURL }) },
+    csp: kernelCsp({ connect: network === true ? "*" : [...new Set([...runtime, ...network.map((o) => o.replace(/\/$/, ""))])] }),
+    kernels: { javascript: js, typescript: js, python: kernelSource(pythonKernel, { indexURL, network, packages }) },
   };
 }
 
@@ -138,7 +147,7 @@ export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoad
         prepare: preparer(options.typescript),
         runTimeoutMs: options.runTimeoutMs ?? settings?.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
         idleTimeoutMs: options.idleTimeoutMs ?? settings?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
-        openFrame: () => openFrame(frameConfig({ ...options, languages })),
+        openFrame: () => openFrame(frameConfig({ ...options, languages, dangerousPermissions: settings?.permissions?.scratchpad.dangerousPermissions })),
       }),
   };
 }

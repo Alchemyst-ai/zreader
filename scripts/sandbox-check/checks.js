@@ -5,6 +5,16 @@ import * as sucrase from "sucrase";
 
 const sandbox = browserSandbox({ runTimeoutMs: 5000, idleTimeoutMs: false, typescript: async () => sucrase });
 const clientPromise = sandbox.load();
+// A second Sandbox with Dangerous permissions granted, as reader.sandbox.permissions would.
+const granted = browserSandbox({ runTimeoutMs: 60_000, idleTimeoutMs: false }).load({
+  permissions: { scratchpad: { dangerousPermissions: { network: ["https://cdn.jsdelivr.net"], packages: ["tabulate"] } } },
+});
+async function runGranted(language, code) {
+  const client = await granted;
+  const events = [];
+  for await (const e of client.run({ kernel: "granted", runnableId: `g${++n}`, language, code, codeSource: "scratchpad" })) events.push(e);
+  return events;
+}
 let n = 0;
 
 async function run(language, code, kernel = "check") {
@@ -91,6 +101,27 @@ const CHECKS = [
     const ev = await pending;
     const after = error(await run("python", "x"));
     return [ev.at(-1)?.type === "restarted" && after?.name === "NameError", after ? `${after.name}: ${after.message}` : "x still defined"];
+  }],
+  ["Permissions: none granted, fetch says the site blocked it", async () => {
+    const ev = await run("javascript", "await fetch('https://cdn.jsdelivr.net/npm/acorn/package.json')");
+    return [/Blocked by this site's permissions/.test(error(ev)?.message ?? ""), error(ev)?.message];
+  }],
+  ["Permissions: none granted, micropip.install is refused", async () => {
+    if (!has("python")) return [true, "skipped"];
+    const ev = await run("python", "import micropip\nawait micropip.install('tabulate')");
+    const e = error(ev);
+    return [e?.name === "PermissionError", e ? `${e.name}: ${e.message}` : "installed"];
+  }],
+  ["Permissions: a granted origin is reachable, others are not", async () => {
+    const ok = await runGranted("javascript", "(await fetch('https://cdn.jsdelivr.net/npm/acorn/package.json')).status");
+    const no = await runGranted("javascript", "await fetch('https://example.com/')");
+    return [result(ok) === "200" && /Blocked/.test(error(no)?.message ?? ""), `${result(ok)} / ${error(no)?.message?.slice(0, 60)}`];
+  }],
+  ["Permissions: a granted package installs, another is refused", async () => {
+    if (!has("python")) return [true, "skipped"];
+    const ok = await runGranted("python", "import micropip\nawait micropip.install('tabulate')\nimport tabulate\ntabulate.tabulate([[1, 2]])");
+    const no = await runGranted("python", "import micropip\nawait micropip.install('requests')");
+    return [!!result(ok) && error(no)?.name === "PermissionError", `${result(ok) ?? error(ok)?.message?.split("\n").at(-1)} / ${error(no)?.name}`];
   }],
   ["TypeScript: types are stripped and variables kept", async () => {
     if (!has("typescript")) return [true, "skipped: no TypeScript in this build"];

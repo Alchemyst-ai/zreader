@@ -105,7 +105,52 @@ export function frameMain(config: FrameConfig) {
 }
 
 /** The JavaScript Kernel worker. Code arrives already rewritten (see rewrite.ts). */
-export function javascriptKernel() {
+/**
+ * Runs in every Kernel before user code: `fetch` to an origin the site hasn't
+ * granted fails with a clear message (the CSP is what actually blocks it), and
+ * any failed fetch rethrows a fresh error, because WebKit's CSP rejection can
+ * hang a Python run. `allowed` holds origins, `https://*.host` patterns, or `true`.
+ */
+export function installFetchGuard(allowed: string[] | true) {
+  const permitted = (url: string) => {
+    if (allowed === true) return true;
+    let u: URL;
+    try {
+      u = new URL(url, self.location.href);
+    } catch {
+      return false;
+    }
+    return allowed.some((a) => {
+      const m = /^(https?:)\/\/(\*\.)?([^/:]+)(:\d+)?\/?$/.exec(a);
+      if (!m) return false;
+      if (u.protocol !== m[1] || (m[4] ?? "") !== (u.port ? `:${u.port}` : "")) return false;
+      return m[2] ? u.hostname.endsWith(`.${m[3]}`) : u.hostname === m[3];
+    });
+  };
+  const rawFetch = self.fetch.bind(self);
+  self.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!permitted(url)) {
+      let origin = url;
+      try {
+        origin = new URL(url, self.location.href).origin;
+      } catch {
+        /* keep the raw URL */
+      }
+      return Promise.reject(
+        new TypeError(
+          `Blocked by this site's permissions: code here can't reach ${origin}. Site owners grant network access in reader.config.ts (reader.sandbox.permissions.scratchpad.dangerousPermissions.network).`,
+        ),
+      );
+    }
+    return rawFetch(input, init).catch((e: unknown) => {
+      throw new TypeError(`fetch failed: ${String((e as Error)?.message ?? e)}`);
+    });
+  };
+}
+
+
+export function javascriptKernel(config: { network: string[] | true }) {
   let runId = 0;
   const post = (event: Record<string, unknown>) => postMessage({ runId, event });
   const format = (v: unknown, top: boolean): string => {
@@ -135,12 +180,7 @@ export function javascriptKernel() {
     console[level] = (...args: unknown[]) =>
       post({ type: level === "warn" || level === "error" ? "stderr" : "stdout", text: args.map((a) => format(a, true)).join(" ") + "\n" });
   }
-  // WebKit rejects CSP-blocked fetches with an error that can hang a run; rethrow a fresh one.
-  const rawFetch = self.fetch.bind(self);
-  self.fetch = (...args: Parameters<typeof fetch>) =>
-    rawFetch(...args).catch((e: unknown) => {
-      throw new TypeError(`fetch failed: ${String((e as Error)?.message ?? e)}`);
-    });
+  installFetchGuard(config.network);
   const AsyncFunction = (async () => {}).constructor as new (body: string) => () => Promise<unknown>;
   self.onmessage = async (e: MessageEvent) => {
     const m = e.data as { type: string; runId: number; code: string };
@@ -162,24 +202,40 @@ export function javascriptKernel() {
 }
 
 /** The Python Kernel worker: Pyodide, loaded from `indexURL` on the first run. */
-export function pythonKernel(config: { indexURL: string }) {
+export function pythonKernel(config: { indexURL: string; network: string[] | true; packages: string[] }) {
   let runId = 0;
   const post = (event: Record<string, unknown>) => postMessage({ runId, event });
-  // WebKit rejects CSP-blocked fetches with an error Pyodide can't turn into a Python
-  // exception, which hangs the run. Rethrow a fresh one.
-  const rawFetch = self.fetch.bind(self);
-  self.fetch = (...args: Parameters<typeof fetch>) =>
-    rawFetch(...args).catch((e: unknown) => {
-      throw new TypeError(`fetch failed: ${String((e as Error)?.message ?? e)}`);
-    });
+  // Pyodide loads its own files with fetch, and micropip needs PyPI when packages are granted.
+  const runtime = [new URL(config.indexURL).origin, ...(config.packages.length ? ["https://pypi.org", "https://files.pythonhosted.org"] : [])];
+  installFetchGuard(config.network === true ? true : [...runtime, ...config.network]);
   type Py = {
     setStdout(o: { batched: (s: string) => void }): void;
     setStderr(o: { batched: (s: string) => void }): void;
     loadPackagesFromImports(code: string, o: { messageCallback: (m: string) => void; errorCallback: (m: string) => void }): Promise<unknown>;
     runPythonAsync(code: string): Promise<unknown>;
+    loadPackage(name: string, o: { messageCallback: (m: string) => void }): Promise<unknown>;
+    toPy(v: unknown): unknown;
     globals: { get(name: string): (v: unknown) => unknown };
   };
   let pyodide: Promise<Py> | null = null;
+  let micropipGuarded = false;
+  // micropip may only install the packages the site granted, checked by name (ADR 0005).
+  const MICROPIP_GUARD = [
+    "def _zr_guard():",
+    "    import re, micropip",
+    "    norm = lambda n: re.sub(r'[-_.]+', '-', n).lower()",
+    "    allowed = {norm(p) for p in _zr_allowed}",
+    "    original = micropip.install",
+    "    async def install(requirements, *args, **kwargs):",
+    "        for r in ([requirements] if isinstance(requirements, str) else list(requirements)):",
+    "            name = norm(re.split(r'[<>=!~\\[;@ ]', r.strip(), maxsplit=1)[0])",
+    "            if name not in allowed:",
+    "                raise PermissionError(f\"Blocked by this site's permissions: installing '{name}' isn't allowed. Site owners grant packages in reader.config.ts (reader.sandbox.permissions.scratchpad.dangerousPermissions.packages).\")",
+    "        return await original(requirements, *args, **kwargs)",
+    "    micropip.install = install",
+    "_zr_guard()",
+    "del _zr_guard, _zr_allowed",
+  ].join("\n");
   const load = () => {
     if (!pyodide) {
       post({ type: "status", text: "Downloading the Python runtime (about 10 MB)…" });
@@ -201,6 +257,12 @@ export function pythonKernel(config: { indexURL: string }) {
       py.setStderr({ batched: (s) => post({ type: "stderr", text: `${s}\n` }) });
       // Packages Pyodide ships (numpy, pandas, …) come from indexURL; nothing else is fetched.
       await py.loadPackagesFromImports(m.code, { messageCallback: () => {}, errorCallback: (s) => post({ type: "stderr", text: `${s}\n` }) });
+      if (/\bmicropip\b/.test(m.code) && !micropipGuarded) {
+        await py.loadPackage("micropip", { messageCallback: () => {} });
+        (py as unknown as { globals: { set(k: string, v: unknown): void } }).globals.set("_zr_allowed", py.toPy(config.packages));
+        await py.runPythonAsync(MICROPIP_GUARD);
+        micropipGuarded = true;
+      }
       post({ type: "started" });
       const value = await py.runPythonAsync(m.code);
       if (value !== undefined) {
@@ -231,4 +293,9 @@ export function pythonKernel(config: { indexURL: string }) {
 /** Source for `fn(...args)`, to start from a blob URL. */
 export function sourceOf(fn: (...args: never[]) => unknown, ...args: unknown[]): string {
   return `(${fn.toString()})(${args.map((a) => JSON.stringify(a)).join(", ")});`;
+}
+
+/** Source for a Kernel worker: the fetch guard, then the Kernel. */
+export function kernelSource(fn: (...args: never[]) => unknown, ...args: unknown[]): string {
+  return `${installFetchGuard.toString()}\n${sourceOf(fn, ...args)}`;
 }
