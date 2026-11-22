@@ -1,5 +1,7 @@
 import * as acorn from "acorn";
 import { describe, expect, it } from "vitest";
+import * as sucrase from "sucrase";
+import { browserSandbox, stripTypes } from "../src/sandbox/browser/index";
 import { rewriteJavaScript } from "../src/sandbox/browser/rewrite";
 
 /** Runs rewritten cells one after another in one shared global scope, like a Kernel. */
@@ -55,5 +57,29 @@ describe("rewriting JavaScript for a Kernel", () => {
 
   it("reports syntax errors with their position", () => {
     expect(() => rewriteJavaScript("let = ;", acorn)).toThrow(SyntaxError);
+  });
+});
+
+describe("TypeScript", () => {
+  async function tsKernel() {
+    const globals: Record<string, unknown> = {};
+    const scope = new Proxy(globals, { has: (_t, k) => typeof k === "string" && !(k in globalThis) });
+    return (code: string) => new Function("scope", `with (scope) { return (async () => { ${rewriteJavaScript(stripTypes(code, sucrase), acorn)}\n })(); }`)(scope) as Promise<unknown>;
+  }
+
+  it("runs typed code and keeps its variables", async () => {
+    const run = await tsKernel();
+    await run("interface P { x: number }\nconst p: P = { x: 40 } as P\nfunction add<T extends number>(a: T, b: T): number { return a + b }");
+    expect(await run("add(p.x, 2 as number)")).toBe(42);
+    expect(await run("enum Color { Red, Green }\nColor.Green")).toBe(1);
+  });
+
+  it("reports a TypeScript syntax error as a SyntaxError", () => {
+    expect(() => stripTypes("let x: = 1", sucrase)).toThrow(SyntaxError);
+  });
+
+  it("is offered only when the site passes sucrase", () => {
+    expect(browserSandbox().languages).not.toContain("typescript");
+    expect(browserSandbox({ typescript: async () => sucrase }).languages).toContain("typescript");
   });
 });

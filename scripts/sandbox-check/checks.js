@@ -1,7 +1,9 @@
 // The checks, bundled with the built zreader/sandbox/browser by run.mjs.
 import { browserSandbox } from "../../dist/sandbox/browser/index.js";
 
-const sandbox = browserSandbox({ runTimeoutMs: 5000, idleTimeoutMs: false });
+import * as sucrase from "sucrase";
+
+const sandbox = browserSandbox({ runTimeoutMs: 5000, idleTimeoutMs: false, typescript: async () => sucrase });
 const clientPromise = sandbox.load();
 let n = 0;
 

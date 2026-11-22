@@ -8,7 +8,7 @@
  * opaque origin: code can't read the page, its storage or the reader's other
  * data, and can't reach the network unless the site grants it (ADR 0001).
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { SandboxLanguage, SandboxLoader } from "zreader";
 import { useRegisterSandbox } from "zreader/react";
 import { KernelHost, isFrameHandshake } from "./host";
@@ -29,9 +29,20 @@ export interface BrowserSandboxOptions {
    * Sandbox frame has an opaque origin.
    */
   pyodideIndexURL?: string;
+  /**
+   * Turns on TypeScript: a loader for `sucrase` (an optional peer dependency),
+   * which strips types before the code runs as JavaScript. Pass
+   * `() => import("sucrase")`; sites without it don't need sucrase installed.
+   */
+  typescript?: () => Promise<SucraseLike>;
 }
 
-export const BROWSER_LANGUAGES: readonly SandboxLanguage[] = ["python", "javascript"];
+/** The part of `sucrase` the TypeScript Kernel uses. */
+export interface SucraseLike {
+  transform(code: string, options: { transforms: string[]; disableESTransforms?: boolean }): { code: string };
+}
+
+export const BROWSER_LANGUAGES: readonly SandboxLanguage[] = ["python", "javascript", "typescript"];
 
 /** The Pyodide release the Python Kernel is tested with. */
 export const PYODIDE_VERSION = "314.0.8";
@@ -54,9 +65,27 @@ export function kernelCsp({ connect = [] }: { connect?: string[] | "*" } = {}): 
 let acorn: Promise<typeof import("acorn")> | null = null;
 const loadAcorn = () => (acorn ??= import("acorn"));
 
-async function prepare(language: SandboxLanguage, code: string): Promise<string> {
-  if (language === "javascript") return rewriteJavaScript(code, await loadAcorn());
-  return code;
+/** Strips TypeScript types with sucrase, reporting syntax errors like the JavaScript rewrite does. */
+export function stripTypes(code: string, sucrase: SucraseLike): string {
+  try {
+    return sucrase.transform(code, { transforms: ["typescript"], disableESTransforms: true }).code;
+  } catch (err) {
+    throw new SyntaxError(String((err as Error)?.message ?? err));
+  }
+}
+
+function preparer(typescript: BrowserSandboxOptions["typescript"]) {
+  let sucrase: Promise<SucraseLike> | null = null;
+  return async (language: SandboxLanguage, code: string): Promise<string> => {
+    if (language === "javascript") return rewriteJavaScript(code, await loadAcorn());
+    if (language === "typescript") {
+      if (!typescript) throw new Error("TypeScript isn't turned on for this Sandbox");
+      sucrase ??= typescript().then((m) => (m as SucraseLike & { default?: SucraseLike }).default ?? m);
+      sucrase.catch(() => (sucrase = null));
+      return rewriteJavaScript(stripTypes(code, await sucrase), await loadAcorn());
+    }
+    return code;
+  };
 }
 
 /** Opens the hidden sandboxed iframe and waits for it to hand over its port. */
@@ -94,19 +123,19 @@ export function frameConfig(options: BrowserSandboxOptions & { languages: readon
   const indexURL = new URL(options.pyodideIndexURL ?? DEFAULT_PYODIDE_INDEX_URL, location.href).href.replace(/\/?$/, "/");
   return {
     csp: kernelCsp({ connect: options.languages.includes("python") ? [new URL(indexURL).origin] : [] }),
-    kernels: { javascript: sourceOf(javascriptKernel), python: sourceOf(pythonKernel, { indexURL }) },
+    kernels: { javascript: sourceOf(javascriptKernel), typescript: sourceOf(javascriptKernel), python: sourceOf(pythonKernel, { indexURL }) },
   };
 }
 
 /** A Sandbox that runs RunnableCode in this browser. */
 export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoader {
-  const languages = (options.languages ?? BROWSER_LANGUAGES).filter((l) => BROWSER_LANGUAGES.includes(l));
+  const languages = (options.languages ?? BROWSER_LANGUAGES).filter((l) => BROWSER_LANGUAGES.includes(l) && (l !== "typescript" || !!options.typescript));
   return {
     languages,
     load: async () =>
       new KernelHost({
         languages,
-        prepare,
+        prepare: preparer(options.typescript),
         runTimeoutMs: options.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
         idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
         openFrame: () => openFrame(frameConfig({ ...options, languages })),
@@ -117,10 +146,16 @@ export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoad
 export type ScratchpadSandboxProps = BrowserSandboxOptions;
 
 /** Turns on RunnableCode in the scratchpad, run in this browser. Render it inside `<ReaderRoot>` / `<ReaderProvider>`. Renders nothing. */
-export function ScratchpadSandbox(props: ScratchpadSandboxProps) {
+export function ScratchpadSandbox({ typescript, ...props }: ScratchpadSandboxProps) {
+  // A new loader restarts every Kernel, so key it on the options' values, not identities.
   const key = JSON.stringify(props);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const loader = useMemo(() => browserSandbox(JSON.parse(key) as BrowserSandboxOptions), [key]);
+  const ts = useRef(typescript);
+  ts.current = typescript;
+  const hasTs = !!typescript;
+  const loader = useMemo(
+    () => browserSandbox({ ...(JSON.parse(key) as BrowserSandboxOptions), typescript: hasTs ? () => ts.current!() : undefined }),
+    [key, hasTs],
+  );
   useRegisterSandbox(loader);
   return null;
 }
