@@ -155,8 +155,9 @@ The order inside the page pipeline matters:
 | Step | Runs | Why there |
 | --- | --- | --- |
 | `remark-math` | `.md`, `.mdx` (only with `content.math`) | Before MDX sees `{…}`, so TeX braces never become JavaScript |
+| `rehypeRunnable` | `.md`, `.mdx` | Right after remark-rehype, while fences still carry their meta: marks RunnableCode (`data-zr-runnable`) and its author Output (`data-zr-output-for`). Before rehype-raw and the site's own rehype plugins, so a highlighter that rebuilds `pre` elements drops the markers |
 | User `remarkPlugins` / `rehypePlugins` | `.md`, `.mdx` | As before; in `.md` they run before sanitizing |
-| DOMPurify | `.md`, `.html` | HTML profile, plus SVG (`sanitize.svg`) and MathML (when math is on). `style` stays forbidden |
+| DOMPurify | `.md`, `.html` | HTML profile, plus SVG (`sanitize.svg`) and MathML (when math is on). `style` stays forbidden. In `.md` only, the RunnableCode markers are kept on `pre` with valid values |
 | `rehypeMathDelimiters` | `.html` | Turns `\(…\)`, `\[…\]`, `$$…$$` into math nodes |
 | `rehypeMath` | all three | **After** sanitizing: engine output is MathML that never has to pass the sanitizer's style rules |
 | `rehypeImages` | all three | URL policy, data-URI limits, relative paths → `_assets` URLs, measuring, captions, `data-zr-image` / `data-zr-zoom` |

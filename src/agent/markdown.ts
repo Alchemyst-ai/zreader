@@ -11,7 +11,7 @@ import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import type { BookEntry, ChapterEntry, ChapterLookup } from "zreader/content";
-import { fenceAttr, isRunnableMeta, sandboxLanguage, type BookMeta, type ChapterMeta } from "zreader";
+import { fenceAttr, isRunnableMeta, outputPairs, sandboxLanguage, type BookMeta, type ChapterMeta } from "zreader";
 import type { NotFoundInfo } from "../plugins/agent/types";
 
 /** Where the reader lives: absolute origin + the reader's basePath. */
@@ -57,7 +57,8 @@ export function markdownPageUrl(ctx: AgentUrlContext, book?: string, chapter?: s
 
 // ---------------------------------------------------------------- conversion
 
-const FENCE_LINE = /^((?:[ \t]*>)*[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?[ \t]*)(`{3,}|~{3,})(.*)$/;
+/** A fence line: blockquote/list prefix, at most 3 spaces of indent, the fence, its info string. */
+const FENCE_LINE = /^((?:[ \t]*>)*(?:[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)? {0,3})(`{3,}|~{3,})(.*)$/;
 
 /**
  * RunnableCode fences as plain fences, for `.md` twins: ```` ```py run id=k3 ````
@@ -68,17 +69,21 @@ export function plainRunnableFences(markdown: string): string {
   if (!/(?:`{3,}|~{3,})[ \t]*\w+[ \t]+(?:[^\n]*[ \t])?run(?:[ \t]|$)/m.test(markdown)) return markdown;
   const lines = markdown.split("\n");
   let open: { char: string; len: number } | null = null;
-  let afterRunnable = false;
+  /** The id of the RunnableCode that just closed (`""` without one), while only blank lines follow it. */
+  let afterRunnable: string | null = null;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const m = FENCE_LINE.exec(line);
+    const cr = lines[i]!.endsWith("\r") ? "\r" : "";
+    const line = cr ? lines[i]!.slice(0, -1) : lines[i]!;
+    let m = FENCE_LINE.exec(line);
+    // A backtick fence's info string can't contain backticks (```` ```js``` ```` is inline code).
+    if (m && m[2]![0] === "`" && m[3]!.includes("`")) m = null;
     if (open) {
       // A closing fence: same character, at least as long, no info string.
       if (m && m[2]![0] === open.char && m[2]!.length >= open.len && !m[3]!.trim()) open = null;
       continue;
     }
     if (!m) {
-      if (line.replace(/^(?:[ \t]*>)*/, "").trim()) afterRunnable = false;
+      if (line.replace(/^(?:[ \t]*>)*/, "").trim()) afterRunnable = null;
       continue;
     }
     const [, prefix, ticks, rest] = m as unknown as [string, string, string, string];
@@ -87,12 +92,13 @@ export function plainRunnableFences(markdown: string): string {
     const meta = metaWords.join(" ");
     const language = sandboxLanguage(info);
     if (language && isRunnableMeta(meta)) {
-      lines[i] = `${prefix}${ticks}${language}`;
-      afterRunnable = true;
+      lines[i] = `${prefix}${ticks}${language}${cr}`;
+      afterRunnable = fenceAttr(meta, "id") ?? "";
       continue;
     }
-    if (info === "output" && (fenceAttr(meta, "for") || afterRunnable)) lines[i] = `${prefix}${ticks}text`;
-    afterRunnable = false;
+    // The same pairing as the page: only the Output right after its code.
+    if (info === "output" && afterRunnable !== null && outputPairs(afterRunnable || null, meta)) lines[i] = `${prefix}${ticks}text${cr}`;
+    afterRunnable = null;
   }
   return lines.join("\n");
 }
@@ -104,10 +110,12 @@ function jsxString(node: Node, name: string): string | undefined {
   if (typeof a?.value === "string") return a.value;
   const expr = (a?.value as { type?: string; value?: string } | undefined)?.value?.trim();
   if (!expr) return undefined;
+  // Re-quote a '…' or `…` literal as "…" so JSON.parse handles its escapes.
+  const requote = (inner: string, quote: string) => JSON.parse(`"${inner.replace(new RegExp(`\\\\${quote}`, "g"), quote).replace(/(^|[^\\])"/g, '$1\\"').replace(/\n/g, "\\n")}"`) as string;
   try {
     if (/^"(?:[^"\\]|\\.)*"$/.test(expr)) return JSON.parse(expr) as string;
-    if (/^'(?:[^'\\]|\\.)*'$/.test(expr)) return JSON.parse(`"${expr.slice(1, -1).replace(/"/g, '\\"').replace(/\\'/g, "'")}"`) as string;
-    if (/^`[^`$]*`$/.test(expr)) return expr.slice(1, -1);
+    if (/^'(?:[^'\\]|\\.)*'$/.test(expr)) return requote(expr.slice(1, -1), "'");
+    if (/^`(?:[^`$\\]|\\.)*`$/.test(expr)) return requote(expr.slice(1, -1), "`");
   } catch {
     /* not a plain string */
   }
@@ -161,23 +169,27 @@ function stripMdx(nodes: Node[]): Node[] {
     if (node.type === "code") {
       // RunnableCode and its Output as plain fences.
       const language = sandboxLanguage(node.lang as string);
-      const prev = out[out.length - 1] as Node & { runnable?: boolean } | undefined;
+      const prev = out[out.length - 1] as (Node & { runnableId?: string | null }) | undefined;
       if (language && isRunnableMeta(node.meta as string)) {
-        out.push({ ...node, lang: language, meta: null, runnable: true } as Node);
+        out.push({ ...node, lang: language, meta: null, runnableId: fenceAttr(node.meta as string, "id") ?? null } as Node);
         continue;
       }
-      if (node.lang === "output" && (fenceAttr(node.meta as string, "for") || prev?.runnable)) {
+      // The same pairing as the page: only the Output right after its code.
+      if (node.lang === "output" && prev && "runnableId" in prev && outputPairs(prev.runnableId, node.meta as string)) {
         out.push({ ...node, lang: "text", meta: null });
         continue;
       }
     }
-    if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && node.name === "RunnableCode") {
+    if (node.type === "mdxJsxFlowElement" && node.name === "RunnableCode") {
       const code = jsxString(node, "code");
       if (code != null) {
         const info = jsxString(node, "language") ?? "";
         out.push({ type: "code", lang: sandboxLanguage(info) ?? info, meta: null, value: code });
         const output = jsxString(node, "output");
         if (output != null) out.push({ type: "code", lang: "text", meta: null, value: output });
+      } else {
+        // Code from an expression can't be shown without running the MDX.
+        out.push({ type: "paragraph", children: [{ type: "text", value: "(Runnable code: see the page.)" }] });
       }
       continue;
     }

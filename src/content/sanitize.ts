@@ -1,5 +1,6 @@
 import DOMPurify from "isomorphic-dompurify";
 import type { SanitizeOptions } from "../config/index";
+import { RUNNABLE_ID, SANDBOX_LANGUAGES } from "zreader";
 import { parseSrcset, stringifySrcset } from "./srcset";
 
 const FORBID_TAGS = ["style", "form", "button", "textarea", "select", "option", "object", "embed", "base", "link", "meta"];
@@ -30,10 +31,10 @@ function hostAllowed(src: string, allow: string[]): boolean {
  */
 /** RunnableCode markers (`rehypeRunnable`), kept only on `pre` and only with valid values. */
 const RUNNABLE_ATTR = ["data-zr-runnable", "data-zr-runnable-id", "data-zr-output-for"];
-const RUNNABLE_VALUE: Record<string, RegExp> = {
-  "data-zr-runnable": /^(?:python|javascript|typescript)$/,
-  "data-zr-runnable-id": /^[A-Za-z0-9_-]{1,64}$/,
-  "data-zr-output-for": /^[A-Za-z0-9_-]{1,64}$/,
+const RUNNABLE_VALUE: Record<string, (v: string) => boolean> = {
+  "data-zr-runnable": (v) => (SANDBOX_LANGUAGES as readonly string[]).includes(v),
+  "data-zr-runnable-id": (v) => RUNNABLE_ID.test(v),
+  "data-zr-output-for": (v) => RUNNABLE_ID.test(v),
 };
 
 export function sanitizeHtml(html: string, options: SanitizeOptions = {}, internal: { mathMl?: boolean; runnable?: boolean } = {}): string {
@@ -57,7 +58,7 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}, intern
   purify.addHook("uponSanitizeAttribute", (node, data) => {
     const rule = RUNNABLE_VALUE[data.attrName];
     if (rule) {
-      if ((node as Element).tagName !== "PRE" || !rule.test(data.attrValue)) data.keepAttr = false;
+      if ((node as Element).tagName !== "PRE" || !rule(data.attrValue)) data.keepAttr = false;
       return;
     }
     if (data.attrName !== "srcset") return;

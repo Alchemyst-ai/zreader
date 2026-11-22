@@ -35,6 +35,19 @@ describe("RunnableCode in chapters: the content pipeline", () => {
     expect(out!.attrs["data-zr-output-for"]).toBe(a!.attrs["data-zr-runnable-id"]);
   });
 
+  it("keeps ids unique when identical RunnableCode has none", async () => {
+    const ids = pres((await renderMarkdown("```py run\n1\n```\n\n```py run\n1\n```")).html).map((p) => p.attrs["data-zr-runnable-id"]);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids[1]).toBe(`${ids[0]}-2`);
+  });
+
+  it("gives MDX RunnableCode block ids at build time", async () => {
+    const { code } = await compileMdx(MD);
+    const [pre] = pres(renderToStaticMarkup(h(await runMdx(code))));
+    expect(pre!.attrs["data-block-id"]).toMatch(/^pre-/);
+    expect(pre!.text).toBe("x = 41\nx + 1\n");
+  });
+
   it("leaves other fences alone: no `run`, an unknown language, an Output for another id", async () => {
     const md = "```python\nx\n```\n\n```rust run\nfn main(){}\n```\n\n```js run id=a\n1\n```\n```output for=b\n1\n```";
     const out = pres((await renderMarkdown(md)).html);
@@ -80,6 +93,27 @@ describe("RunnableCode in chapters: .md twins", () => {
     expect(out).toBe(
       "Intro.\n\n```python\nx = 41\nx + 1\n```\n```text\n42\n```\n\nAfter.\n\n> ```javascript\n> 1\n> ```\n\n```python\n```py run\n```\n",
     );
+  });
+
+  it("pairs Outputs in twins exactly as the page does", async () => {
+    // An Output naming another id, or not right after its code, stays an `output` fence.
+    const body = "```py run id=a\n1\n```\n```output for=b\n1\n```\n\n```output for=a\nlate\n```\n";
+    expect(await twin("md", body)).toBe("```python\n1\n```\n```output for=b\n1\n```\n\n```output for=a\nlate\n```\n");
+    const mdx = await twin("mdx", body);
+    expect(mdx).toContain("```output for=b");
+  });
+
+  it("keeps CRLF line endings, and ignores inline code and indented code that look like fences", async () => {
+    expect(await twin("md", "```py run\r\nx\r\n```\r\n")).toBe("```python\r\nx\r\n```\r\n");
+    const body = "Use ```js run``` inline.\n\n    ```py run\n    indented\n\n```py run\ny\n```\n";
+    expect(await twin("md", body)).toBe("Use ```js run``` inline.\n\n    ```py run\n    indented\n\n```python\ny\n```\n");
+  });
+
+  it("decodes string attributes of <RunnableCode>, and keeps a note for code it can't read", async () => {
+    const out = await twin("mdx", "<RunnableCode language='js' code={'a = \\'x\\''} />\n\n<RunnableCode language=\"py\" code={`print(1)\\nprint(2)`} />\n\n<RunnableCode language=\"py\" code={source} />\n");
+    expect(out).toContain("```javascript\na = 'x'\n```");
+    expect(out).toContain("```python\nprint(1)\nprint(2)\n```");
+    expect(out).toContain("(Runnable code: see the page.)");
   });
 
   it("returns Markdown without RunnableCode unchanged", async () => {

@@ -10,12 +10,12 @@
  *   <pre data-zr-output-for="k3"><code class="language-output">…</code></pre>
  */
 import type { Element, ElementContent, Root, RootContent } from "hast";
-import { RUNNABLE_ID, codeFingerprint, fenceAttr, isRunnableMeta, sandboxLanguage } from "zreader";
+import { RUNNABLE_ID, codeFingerprint, fenceAttr, isRunnableMeta, outputPairs, sandboxLanguage } from "zreader";
 
 type Parent = { children: Array<RootContent | ElementContent> };
 
 /** A `pre > code` fence: its language word, meta and text. */
-function fence(node: RootContent | ElementContent | undefined): { pre: Element; lang: string; meta: string; text: string } | null {
+function codeFence(node: RootContent | ElementContent | undefined): { pre: Element; lang: string; meta: string; text: string } | null {
   if (node?.type !== "element" || node.tagName !== "pre") return null;
   const code = node.children.find((c): c is Element => c.type === "element" && c.tagName === "code");
   if (!code) return null;
@@ -28,30 +28,45 @@ function fence(node: RootContent | ElementContent | undefined): { pre: Element; 
   return { pre: node, lang, meta, text };
 }
 
-function mark(parent: Parent) {
+/**
+ * Without an id, RunnableCode gets one from its code, made unique within the
+ * chapter (`c1x2y`, then `c1x2y-2` for an identical block).
+ */
+function markRunnable(parent: Parent, used: Set<string>) {
   const kids = parent.children;
   for (let i = 0; i < kids.length; i++) {
     const node = kids[i]!;
-    if (node.type === "element") mark(node);
-    const f = fence(node);
+    if (node.type === "element") markRunnable(node, used);
+    const f = codeFence(node);
     if (!f) continue;
     const language = sandboxLanguage(f.lang);
     if (!language || !isRunnableMeta(f.meta)) continue;
     const given = fenceAttr(f.meta, "id");
-    const id = given && RUNNABLE_ID.test(given) ? given : `c${codeFingerprint(language, f.text)}`;
+    let id = given && RUNNABLE_ID.test(given) ? given : `c${codeFingerprint(language, f.text)}`;
+    if (!given) for (let n = 2; used.has(id); n++) id = `c${codeFingerprint(language, f.text)}-${n}`;
+    used.add(id);
     f.pre.properties = { ...f.pre.properties, dataZrRunnable: language, dataZrRunnableId: id };
     // The author's Output: the next block, if it's an `output` fence for this code.
     let j = i + 1;
     while (j < kids.length && kids[j]!.type === "text" && !(kids[j] as { value: string }).value.trim()) j++;
-    const out = fence(kids[j]);
-    if (out && out.lang === "output" && (given ? fenceAttr(out.meta, "for") === given : !fenceAttr(out.meta, "for"))) {
-      out.pre.properties = { ...out.pre.properties, dataZrOutputFor: id };
+    const output = codeFence(kids[j]);
+    if (output && output.lang === "output" && outputPairs(given, output.meta)) {
+      output.pre.properties = { ...output.pre.properties, dataZrOutputFor: id };
       i = j;
     }
   }
 }
 
-/** Marks RunnableCode and its author Output. Runs on hast straight from remark-rehype, while fences still carry their meta. */
+/**
+ * Marks RunnableCode and its author Output. Runs on hast straight from
+ * remark-rehype, while fences still carry their meta, so before rehype-raw and
+ * the site's own rehype plugins (a highlighter that rebuilds `pre` elements
+ * drops the markers).
+ *
+ * Markdown authors can also write the markers as raw HTML. That grants nothing
+ * a fence doesn't: the code still runs only on click, in the Sandbox, with the
+ * site's permissions.
+ */
 export function rehypeRunnable() {
-  return (tree: Root) => mark(tree as unknown as Parent);
+  return (tree: Root) => markRunnable(tree as unknown as Parent, new Set());
 }

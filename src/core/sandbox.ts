@@ -33,6 +33,15 @@ export function fenceAttr(meta: string | null | undefined, name: string): string
   return meta ? new RegExp(`(?:^|\\s)${name}=([^\\s]+)`).exec(meta)?.[1] : undefined;
 }
 
+/**
+ * Does an `output` fence with this meta belong to the RunnableCode before it?
+ * With an id the Output must say `for=<id>`; without one, it must not name any.
+ */
+export function outputPairs(runnableId: string | null | undefined, outputMeta: string | null | undefined): boolean {
+  const target = fenceAttr(outputMeta, "for");
+  return runnableId ? target === runnableId : target === undefined;
+}
+
 /** RunnableCode ids: letters, digits, `-` and `_`. */
 export const RUNNABLE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 

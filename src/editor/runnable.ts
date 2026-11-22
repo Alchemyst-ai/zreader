@@ -18,7 +18,7 @@
  */
 import { Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { base64ToBlob, codeFingerprint, fenceAttr, isRunnableMeta, sandboxLanguage, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
+import { base64ToBlob, codeFingerprint, fenceAttr, isRunnableMeta, outputPairs, sandboxLanguage, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
 
 export const RUNNABLE_NODE = "runnableCode";
 
@@ -53,8 +53,6 @@ export interface RunnableAttrs {
 }
 
 // ------------------------------------------------------------------ Markdown
-
-export { codeFingerprint };
 
 export function newRunnableId(): string {
   return Math.random().toString(36).slice(2, 8).padEnd(6, "0");
@@ -104,7 +102,6 @@ function readFence(lines: string[], at: number): Fence | null {
   return null; // unclosed: leave it to the regular code block
 }
 
-const attr = (rest: string, name: string) => fenceAttr(rest, name);
 
 /** Tokenizes RunnableCode (and the Output fence right after it) at the start of `src`. */
 export function tokenizeRunnable(src: string): RunnableToken | undefined {
@@ -113,15 +110,14 @@ export function tokenizeRunnable(src: string): RunnableToken | undefined {
   if (!code) return undefined;
   const language = sandboxLanguage(code.info);
   if (!language || !isRunnableMeta(code.rest)) return undefined;
-  const givenId = attr(code.rest, "id");
+  const givenId = fenceAttr(code.rest, "id");
   const runnableId = givenId ?? newRunnableId();
   let used = code.lines;
   let output: string | null = null;
   let blank = 0;
   while (used + blank < lines.length && lines[used + blank]!.trim() === "") blank++;
   const out = readFence(lines, used + blank);
-  // Without an id of its own, RunnableCode takes the Output fence right after it.
-  if (out && out.info === "output" && (givenId ? attr(out.rest, "for") === givenId : true)) {
+  if (out && out.info === "output" && outputPairs(givenId, out.rest)) {
     output = out.body;
     used += blank + out.lines;
   }
