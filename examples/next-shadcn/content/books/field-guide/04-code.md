@@ -19,6 +19,21 @@ The next example uses `squares` from the one above:
 sum(squares)
 ```
 
+NumPy and Matplotlib ship with the Python runtime, so they work without any permission. A figure left open at the end of a run is shown under the code:
+
+```python run id=plot
+import numpy as np
+import matplotlib.pyplot as plt
+
+x = np.linspace(0, 2 * np.pi, 200)
+fig, ax = plt.subplots(figsize=(6, 3))
+ax.plot(x, np.sin(x), label="sin")
+ax.plot(x, np.cos(x), label="cos")
+ax.legend()
+ax.set_title("NumPy + Matplotlib")
+float(np.trapezoid(np.sin(x) ** 2, x))
+```
+
 Press **Edit** to change the code, and **Reset** to go back. **Copy to pad** puts the code and its Output in this chapter's scratchpad, where it's yours to keep.
 
 ```javascript run id=greet
