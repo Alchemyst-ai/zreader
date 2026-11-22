@@ -43,7 +43,7 @@ function fakeFrame() {
 }
 
 function host(frame: ReturnType<typeof fakeFrame>, opts: Partial<KernelHostOptions> = {}) {
-  return new KernelHost({ languages: ["javascript", "python"], openFrame: frame.open, prepare: async (_l, c) => c, runTimeoutMs: false, idleTimeoutMs: false, ...opts });
+  return new KernelHost({ languages: ["javascript", "python"], openFrame: () => frame.open(), prepare: async (_l, c) => c, runTimeoutMs: false, idleTimeoutMs: false, ...opts });
 }
 
 const req = (code: string, over: Partial<RunRequest> = {}): RunRequest => ({ kernel: "pad:global#t", runnableId: "r", language: "javascript", code, codeSource: "scratchpad", ...over });
@@ -53,7 +53,7 @@ async function collect(it: AsyncIterable<RunEvent>): Promise<RunEvent[]> {
   for await (const e of it) out.push(e);
   return out;
 }
-const texts = (events: RunEvent[]) => events.map((e) => ("text" in e ? `${e.type}:${e.text.trim()}` : "reason" in e ? `${e.type}:${e.reason}` : e.type));
+const texts = (events: RunEvent[]) => events.filter((e) => e.type !== "started").map((e) => ("text" in e ? `${e.type}:${e.text.trim()}` : "reason" in e ? `${e.type}:${e.reason}` : e.type));
 
 describe("browser Sandbox: Kernel host", () => {
   it("opens the frame once, on the first run, and streams events until exit", async () => {
@@ -133,6 +133,44 @@ describe("browser Sandbox: Kernel host", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(frame.stats().closed).toBe(1);
     expect(frame.sent.at(-1)).toEqual({ type: "dispose" });
+  });
+
+  it("gives Python and JavaScript separate frames", async () => {
+    const frame = fakeFrame();
+    const groups: string[] = [];
+    const h = host(frame, { openFrame: (g) => (groups.push(g), frame.open()) });
+    await collect(h.run(req("a")));
+    await collect(h.run(req("b", { language: "python" })));
+    await collect(h.run(req("c")));
+    expect(groups).toEqual(["javascript", "python"]);
+  });
+
+  it("cancels a run that is still waiting for its Kernel, without running it", async () => {
+    const frame = fakeFrame();
+    const h = host(frame);
+    const first = collect(h.run(req("hang")));
+    const abort = new AbortController();
+    const queued = collect(h.run(req("never"), { signal: abort.signal }));
+    await new Promise((r) => setTimeout(r, 10));
+    abort.abort();
+    expect(await queued).toEqual([]);
+    await h.restart("pad:global#t", "javascript");
+    await first;
+    await new Promise((r) => setTimeout(r, 10));
+    expect(frame.sent.some((m) => m.type === "run" && m.code === "never")).toBe(false);
+  });
+
+  it("doesn't start code that was stopped while the frame was opening", async () => {
+    const frame = fakeFrame();
+    const h = host(frame, { openFrame: async () => (await new Promise((r) => setTimeout(r, 30)), frame.open()), runTimeoutMs: 20 });
+    const pending = collect(h.run(req("hang")));
+    await new Promise((r) => setTimeout(r, 5));
+    await h.restart("pad:global#t", "javascript");
+    expect(texts(await pending)).toEqual(["restarted:stopped"]);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(frame.sent.some((m) => m.type === "run")).toBe(false);
+    // A later run isn't cut short by a leftover timer.
+    expect(texts(await collect(h.run(req("ok"))))).toEqual(["stdout:ok #1", "exit"]);
   });
 
   it("only accepts the port from its own frame, with a null origin", () => {

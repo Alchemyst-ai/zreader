@@ -67,7 +67,7 @@ What readers get:
 - **Top-level `await`** works in Python and JavaScript. JavaScript `import … from "url"` works if the site grants network access to that origin.
 - **Packages Pyodide ships** (numpy, pandas, matplotlib and [many more](https://pyodide.org/en/stable/usage/packages-in-pyodide.html)) can be imported without any permission. Other packages need `packages` (see [Dangerous permissions](#dangerous-permissions)).
 - **Images:** a matplotlib figure left open at the end of a run is shown under the code. In JavaScript, `await display(canvas)` shows an `OffscreenCanvas`, an image `Blob` or an image data URL.
-- **Stop** ends a run. Browsers can't interrupt a run and keep its variables, so Stop restarts the **Kernel** (the interpreter holding the pad's state) and says its variables were cleared ([ADR 0003](./adr/0003-no-cross-origin-isolation-stop-restarts-kernel.md)). A run that takes longer than the run timeout is stopped the same way.
+- **Stop** ends a run. Browsers can't interrupt a run and keep its variables, so Stop restarts the **Kernel** (the interpreter holding the pad's state) and says its variables were cleared ([ADR 0003](./adr/0003-no-cross-origin-isolation-stop-restarts-kernel.md)). A run that takes longer than the run timeout is stopped the same way. Stop on RunnableCode still waiting for the Kernel (behind another run in the same pad) just cancels it.
 - Each pad has one Kernel per language, per browser tab. A Kernel with no run for 15 minutes is shut down, and the next run says so.
 
 ## How it is stored
@@ -144,14 +144,14 @@ reader: {
 },
 ```
 
-- **`network`**: origins (`https://host`, `https://*.host`, with a port if needed) that `fetch` and JavaScript imports may reach, or `true` for any. The Sandbox frame's Content-Security-Policy allows exactly these.
+- **`network`**: origins (`https://host`, `https://*.host`, with a port if needed) that `fetch` and JavaScript imports may reach, or `true` for any. The Content-Security-Policy of the Sandbox frames allows exactly these (the Python frame also allows the origin Pyodide loads from).
 - **`packages`**: names `micropip.install` may install, checked by name ([ADR 0005](./adr/0005-chapter-packages-pinned-and-csp-enforced.md)). Granting any adds `pypi.org` and `files.pythonhosted.org` to the policy, so their dependencies install too. Pinning to exact files is planned for code written by book authors, where trust matters more.
 - When a request or install is blocked, the reader sees a message saying this site's permissions blocked it and naming the setting.
 - Python can always reach the origin Pyodide is loaded from, because Pyodide loads its own files from there.
 
 ## Isolation
 
-Every Kernel runs in a worker inside one hidden `<iframe sandbox="allow-scripts">` created from `srcdoc`, which gives it an opaque origin:
+Every Kernel runs in a worker inside a hidden `<iframe sandbox="allow-scripts">` created from `srcdoc`, which gives it an opaque origin. Python gets one frame, and JavaScript and TypeScript another, so each frame's policy allows only what its Kernels need:
 
 - It can't read the page, its cookies, `localStorage`, IndexedDB or the reader's notes.
 - Its Content-Security-Policy blocks all network access except the runtime's origin and what you granted.

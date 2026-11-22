@@ -121,6 +121,10 @@ const CHECKS = [
     const ev = await run("javascript", "await fetch('https://cdn.jsdelivr.net/npm/acorn/package.json')");
     return [/Blocked by this site's permissions/.test(error(ev)?.message ?? ""), error(ev)?.message];
   }],
+  ["JavaScript: can't import from the Python runtime's origin", async () => {
+    const ev = await run("javascript", "await import('https://cdn.jsdelivr.net/npm/acorn@8/+esm')\n'imported'");
+    return [!result(ev) && !!error(ev), error(ev)?.message ?? "imported"];
+  }],
   ["Permissions: none granted, micropip.install is refused", async () => {
     if (!has("python")) return [true, "skipped"];
     const ev = await run("python", "import micropip\nawait micropip.install('tabulate')");

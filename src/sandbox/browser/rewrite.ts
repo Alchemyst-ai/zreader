@@ -56,9 +56,23 @@ export function rewriteJavaScript(code: string, acorn: AcornModule): string {
 
   body.forEach((stmt0, i) => {
     let stmt = stmt0;
-    if ((stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration") && stmt.declaration) {
-      // `export` means nothing in a Kernel: keep the declaration.
+    // `export` means nothing in a Kernel: keep what it declares, drop the rest.
+    if (stmt.type === "ExportNamedDeclaration" && !stmt.declaration) {
+      edits.push({ start: stmt.start, end: stmt.end, text: "" });
+      return;
+    }
+    if (stmt.type === "ExportAllDeclaration") {
+      edits.push({ start: stmt.start, end: stmt.end, text: importText({ ...stmt, specifiers: [] } as AnyNode, code) });
+      return;
+    }
+    if (stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration") {
       const decl = stmt.declaration as AnyNode;
+      const named = (decl.type === "FunctionDeclaration" || decl.type === "ClassDeclaration") && decl.id;
+      if (stmt.type === "ExportDefaultDeclaration" && !named && decl.type !== "VariableDeclaration") {
+        // `export default <expression>` (or an anonymous function/class): keep it as a value.
+        edits.push({ start: stmt.start, end: stmt.end, text: `;(${code.slice(decl.start, decl.end)});` });
+        return;
+      }
       edits.push({ start: stmt.start, end: decl.start, text: "" });
       stmt = decl;
     }

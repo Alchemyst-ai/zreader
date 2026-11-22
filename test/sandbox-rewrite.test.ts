@@ -4,7 +4,7 @@ import * as sucrase from "sucrase";
 import { browserSandbox, stripTypes } from "../src/sandbox/browser/index";
 import { rewriteJavaScript } from "../src/sandbox/browser/rewrite";
 
-/** Runs rewritten cells one after another in one shared global scope, like a Kernel. */
+/** Runs rewritten code one run after another in one shared global scope, like a Kernel. */
 async function kernel() {
   // A `with` scope stands in for the worker's global object: the rewrite assigns undeclared globals.
   const globals: Record<string, unknown> = {};
@@ -53,6 +53,14 @@ describe("rewriting JavaScript for a Kernel", () => {
     expect(out).toContain(';({ default: d, a: b, c } = await import("https://esm.sh/x"));');
     expect(out).toContain('ns = await import("y");');
     expect(out).toContain('await import("z");');
+  });
+
+  it("drops `export` but keeps what it declares", async () => {
+    const run = await kernel();
+    await run("export const a = 1\nexport function f() { return 2 }\nexport { a as b }\nexport default 40");
+    expect(await run("a + f()")).toBe(3);
+    expect(() => rewriteJavaScript("export default function () {}\nexport default class {}", acorn)).toThrow(); // two defaults
+    expect(() => new Function(rewriteJavaScript("export default function () { return 1 }", acorn))).not.toThrow();
   });
 
   it("reports syntax errors with their position", () => {

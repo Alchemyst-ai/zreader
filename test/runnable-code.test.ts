@@ -22,6 +22,7 @@ function fakeSandbox(script: (req: RunRequest) => RunEvent[]) {
     languages: ["python", "javascript"],
     async *run(req) {
       runs.push(req);
+      yield { type: "started" } as RunEvent;
       for (const e of script(req)) {
         if (e.type === "restarted") await new Promise<void>((r) => (hang = r));
         yield e;
@@ -93,7 +94,18 @@ describe("RunnableCode: Markdown", () => {
     ed.destroy();
   });
 
+  it("strips a fence's indent from the code, and pairs an Output with RunnableCode that has no id", () => {
+    const ed = headless("  ```python run\n  x = 1\n    y = 2\n  ```\n```output\nok\n```", fakeSandbox(echo).host);
+    const n = ed.state.doc.firstChild!;
+    expect(n.type.name).toBe("runnableCode");
+    expect(n.textContent).toBe("x = 1\n  y = 2");
+    expect(n.attrs.output).toBe("ok");
+    ed.destroy();
+  });
+
   it("detects RunnableCode in Markdown", () => {
+    expect(markdownHasRunnable("- ```python run id=x\n  1\n  ```")).toBe(true);
+    expect(markdownHasRunnable("1. ```js run\n   1\n   ```")).toBe(true);
     expect(markdownHasRunnable(SOURCE)).toBe(true);
     expect(markdownHasRunnable("> ```js run id=x\n> 1\n> ```")).toBe(true);
     expect(markdownHasRunnable("```python\nrun()\n```")).toBe(false);
@@ -193,6 +205,53 @@ describe("RunnableCode: running", () => {
     ed.destroy();
   });
 
+  it("Stop on code still waiting for the Kernel cancels it, and leaves the running code alone", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const runs: string[] = [];
+    const restarts: string[] = [];
+    const client: SandboxClient = {
+      languages: ["python"],
+      async *run(req, opts) {
+        runs.push(req.code);
+        if (req.code === "second") {
+          // Queued behind the first run: never starts if cancelled.
+          await new Promise<void>((r) => opts?.signal?.addEventListener("abort", () => r()));
+          return;
+        }
+        yield { type: "started" };
+        await gate;
+        yield { type: "exit", ok: true, ms: 1 };
+      },
+      async restart(k) {
+        restarts.push(k);
+      },
+      dispose() {},
+    };
+    const host: RunnableHost = { languages: ["python"], client: async () => client, kernel: "k", codeSource: "scratchpad" };
+    const ed = headless("```python run id=q1\nfirst\n```\n\n```python run id=q2\nsecond\n```", host);
+    await click(view(ed, 0), "Run");
+    await click(view(ed, 1), "Run");
+    await settle();
+    expect(view(ed, 1).querySelector(".zr-runnable-status")!.textContent).toBe("Waiting for the Kernel…");
+    await click(view(ed, 1), "Stop");
+    await settle();
+    expect(restarts).toEqual([]);
+    expect(view(ed, 1).dataset.state).toBe("idle");
+    expect(view(ed, 1).querySelector(".zr-runnable-notice")!.textContent).toBe("Stopped before it ran.");
+    expect(view(ed, 0).dataset.state).toBe("running");
+    release();
+    await settle();
+    expect(view(ed, 0).dataset.state).toBe("idle");
+    ed.destroy();
+  });
+
+  it("offers only the Sandbox's languages in the picker", () => {
+    const ed = headless("```python run id=l1\n1\n```", fakeSandbox(echo).host);
+    expect([...view(ed).querySelectorAll("option")].map((o) => o.value)).toEqual(["python", "javascript"]);
+    ed.destroy();
+  });
+
   it("can't run a language the Sandbox doesn't offer", () => {
     const ed = headless("```typescript run id=j0\nlet a: number = 1\n```", fakeSandbox(echo).host);
     expect(view(ed).querySelector<HTMLButtonElement>('button[aria-label="Run"]')!.disabled).toBe(true);
@@ -243,6 +302,27 @@ describe("RunnableCode: in the scratchpad", () => {
     expect(off.el.querySelector(".zr-runnable")).toBeNull();
     expect(off.el.textContent).toContain("x = 41");
     await act(async () => off.root.unmount());
+  });
+
+  it("still runs after React Strict Mode remounts the provider", async () => {
+    const { StrictMode } = await import("react");
+    const { ReaderProvider } = await import("../src/react/index");
+    const { ScratchpadEditor } = await import("../src/editor/index");
+    const store = createReaderStore({ adapter: createMemoryAdapter(), writeDelay: 0 });
+    const scope = { kind: "book", bookId: "strict" } as const;
+    store.savePad(scope, "```python run id=s1\n1\n```");
+    const fake = fakeSandbox(echo);
+    const loader: SandboxLoader = { languages: ["python"], load: async () => fake.client };
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () => root.render(h(StrictMode, null, h(ReaderProvider, { store, sandbox: loader, manageTheme: false, toaster: false, children: h(ScratchpadEditor, { scope }) }))));
+    await settle();
+    await click(el.querySelector(".zr-runnable")!, "Run");
+    await settle();
+    expect(fake.runs).toHaveLength(1);
+    expect(el.querySelector(".zr-runnable-output")!.textContent).toContain("ran 1");
+    await act(async () => root.unmount());
   });
 
   it("follows the site's limits: scopes turned off show plain code, and the Kernel gets the timeouts", async () => {
@@ -320,6 +400,17 @@ describe("RunnableCode: images", () => {
     await click(view(ed), "Run");
     await settle();
     expect(ed.getMarkdown()).not.toContain("zr-blob:abc123");
+    ed.destroy();
+  });
+
+  it("never shows or keeps SVG from a run", async () => {
+    const blobs = createMemoryBlobStore();
+    const sb = fakeSandbox(() => [{ type: "display", mime: "image/svg+xml", data: btoa("<svg onload='alert(1)'/>") }, { type: "exit", ok: true, ms: 1 }]);
+    const ed = headless("```python run id=p4\nsvg()\n```", { ...sb.host, blobs, addImage: async (b: Blob) => `zr-blob:${await blobs.put(b)}` });
+    await click(view(ed), "Run");
+    await settle();
+    expect(await blobs.list()).toEqual([]);
+    expect(view(ed).querySelectorAll("img")).toHaveLength(0);
     ed.destroy();
   });
 

@@ -18,7 +18,7 @@
  */
 import { Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { SANDBOX_LANGUAGES, base64ToBlob, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
+import { base64ToBlob, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
 
 export const RUNNABLE_NODE = "runnableCode";
 
@@ -97,7 +97,7 @@ export interface RunnableToken {
 
 const DISPLAY_LINE = /^!\[output\]\((zr-blob:[a-z0-9_-]+)\)[ \t]*$/i;
 
-const OPEN = /^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`]+)([^\n`]*)$/;
+const OPEN = /^( {0,3})(`{3,}|~{3,})[ \t]*([^\s`]+)([^\n`]*)$/;
 
 interface Fence {
   info: string;
@@ -111,12 +111,14 @@ interface Fence {
 function readFence(lines: string[], at: number): Fence | null {
   const m = OPEN.exec(lines[at] ?? "");
   if (!m) return null;
-  const fence = m[1]!;
+  const indent = m[1]!.length;
+  const fence = m[2]!;
   const close = new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}[ \\t]*$`);
   const body: string[] = [];
   for (let i = at + 1; i < lines.length; i++) {
-    if (close.test(lines[i]!)) return { info: m[2]!, rest: m[3]!, body: body.join("\n"), lines: i - at + 1 };
-    body.push(lines[i]!);
+    if (close.test(lines[i]!)) return { info: m[3]!, rest: m[4]!, body: body.join("\n"), lines: i - at + 1 };
+    // Like CommonMark: up to the opening fence's indent is removed from each line.
+    body.push(lines[i]!.replace(new RegExp(`^ {0,${indent}}`), ""));
   }
   return null; // unclosed: leave it to the regular code block
 }
@@ -130,13 +132,15 @@ export function tokenizeRunnable(src: string): RunnableToken | undefined {
   if (!code) return undefined;
   const language = LANGUAGE_ALIASES[code.info.toLowerCase()];
   if (!language || !/(?:^|\s)run(?:\s|$)/.test(code.rest)) return undefined;
-  const runnableId = attr(code.rest, "id") ?? newRunnableId();
+  const givenId = attr(code.rest, "id");
+  const runnableId = givenId ?? newRunnableId();
   let used = code.lines;
   let output: string | null = null;
   let blank = 0;
   while (used + blank < lines.length && lines[used + blank]!.trim() === "") blank++;
   const out = readFence(lines, used + blank);
-  if (out && out.info === "output" && attr(out.rest, "for") === runnableId) {
+  // Without an id of its own, RunnableCode takes the Output fence right after it.
+  if (out && out.info === "output" && (givenId ? attr(out.rest, "for") === givenId : true)) {
     output = out.body;
     used += blank + out.lines;
   }
@@ -172,7 +176,7 @@ export function renderRunnableMarkdown(attrs: Pick<RunnableAttrs, "language" | "
 
 /** Would this Markdown parse into RunnableCode when the feature is on? */
 export function markdownHasRunnable(markdown: string): boolean {
-  return /^(?:[ \t]*>)*[ \t]*(?:`{3,}|~{3,})[ \t]*(?:python|py|javascript|js|typescript|ts)[ \t]+(?:[^\n]*[ \t])?run(?:[ \t]|$)/im.test(markdown);
+  return /^(?:[ \t]*(?:>|[-*+]|\d{1,9}[.)])(?=[ \t]|$))*[ \t]*(?:`{3,}|~{3,})[ \t]*(?:python|py|javascript|js|typescript|ts)[ \t]+(?:[^\n]*[ \t])?run(?:[ \t]|$)/im.test(markdown);
 }
 
 // ------------------------------------------------------------------ Running
@@ -197,6 +201,9 @@ const RESTART_NOTICE: Record<string, string> = {
 
 export const RUN_EVENT = "zr-runnable-run";
 
+/** Images shown and kept from a run: raster only, since an SVG could run script if opened on its own. */
+const isRaster = (mime: string) => /^image\/(png|jpeg|gif|webp)$/.test(mime);
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & Record<string, unknown> = {}, ...children: (Node | string)[]) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -210,14 +217,15 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 function nodeView(host: RunnableHost) {
   return ({ node: initial, getPos, editor }: { node: PMNode; getPos: () => number | undefined; editor: Editor }) => {
     let node = initial;
-    let running: { abort: AbortController; events: RunEvent[] } | null = null;
+    let running: { abort: AbortController; events: RunEvent[]; started: boolean; cancelled: boolean } | null = null;
     /** The last run's events, shown (with stderr styling) while the saved Output is still theirs. */
     let shown: { events: RunEvent[]; ranFor: string } | null = null;
     let notice = "";
 
     const attrs = () => node.attrs as RunnableAttrs;
     const language = el("select", { className: "zr-runnable-language", "aria-label": "Language" });
-    for (const l of SANDBOX_LANGUAGES) language.append(el("option", { value: l, textContent: LANGUAGE_LABELS[l] }));
+    // Offer the Sandbox's languages; one it doesn't run shows only on code already written in it.
+    for (const l of host.languages) language.append(el("option", { value: l, textContent: LANGUAGE_LABELS[l] }));
     const status = el("span", { className: "zr-runnable-status", role: "status" });
     const runButton = el("button", { type: "button", className: "zr-runnable-button", textContent: "Run", title: "Run (Shift+Enter)", "aria-label": "Run" });
     const stopButton = el("button", { type: "button", className: "zr-runnable-button", textContent: "Stop", "aria-label": "Stop" });
@@ -225,10 +233,10 @@ function nodeView(host: RunnableHost) {
     const bar = el("div", { className: "zr-runnable-bar", contentEditable: "false" }, language, status, runButton, stopButton, restartButton);
     const code = el("code");
     const pre = el("pre", { className: "zr-runnable-code", spellcheck: false }, code);
-    const outputText_ = el("pre", { className: "zr-runnable-output-text" });
+    const outputPane = el("pre", { className: "zr-runnable-output-text" });
     const noticeEl = el("p", { className: "zr-runnable-notice" });
     const images = el("div", { className: "zr-runnable-displays" });
-    const output = el("div", { className: "zr-runnable-output", contentEditable: "false", "aria-live": "polite", "aria-label": "Output" }, outputText_, images, noticeEl);
+    const output = el("div", { className: "zr-runnable-output", contentEditable: "false", "aria-live": "polite", "aria-label": "Output" }, outputPane, images, noticeEl);
     /** Object URLs in the Output pane: kept images (released to the BlobStore) or live ones (revoked). */
     let shownImages: Array<{ src: string; url?: string; live: boolean }> = [];
     const showImages = (list: Array<{ src: string; live?: Blob }>) => {
@@ -261,31 +269,34 @@ function nodeView(host: RunnableHost) {
     const supported = () => host.languages.includes(attrs().language);
 
     const renderOutput = () => {
-      outputText_.replaceChildren();
+      outputPane.replaceChildren();
       const live = running?.events ?? (shown && shown.ranFor === attrs().outputFor ? shown.events : undefined);
       if (live) {
         for (const e of live) {
-          if (e.type === "stdout") outputText_.append(e.text);
-          else if (e.type === "stderr") outputText_.append(el("span", { className: "zr-runnable-stderr" }, e.text));
-          else if (e.type === "result") outputText_.append(el("span", { className: "zr-runnable-result" }, e.text + "\n"));
-          else if (e.type === "error") outputText_.append(el("span", { className: "zr-runnable-stderr" }, (e.traceback ?? `${e.name}: ${e.message}`) + "\n"));
+          if (e.type === "stdout") outputPane.append(e.text);
+          else if (e.type === "stderr") outputPane.append(el("span", { className: "zr-runnable-stderr" }, e.text));
+          else if (e.type === "result") outputPane.append(el("span", { className: "zr-runnable-result" }, e.text + "\n"));
+          else if (e.type === "error") outputPane.append(el("span", { className: "zr-runnable-stderr" }, (e.traceback ?? `${e.name}: ${e.message}`) + "\n"));
         }
       } else if (attrs().output) {
-        outputText_.textContent = attrs().output;
+        outputPane.textContent = attrs().output;
       }
       const liveImages = (events: readonly RunEvent[]) =>
-        events.flatMap((e, i) => (e.type === "display" && e.mime.startsWith("image/") ? [{ src: `live:${i}:${e.data.length}`, live: base64ToBlob(e.data, e.mime) }] : []));
+        events.flatMap((e, i) => (e.type === "display" && isRaster(e.mime) ? [{ src: `live:${i}:${e.data.length}`, live: base64ToBlob(e.data, e.mime) }] : []));
       const kept = attrs().displays ?? [];
       if (running) showImages(liveImages(running.events));
       else if (kept.length) showImages(kept.map((src) => ({ src })));
       else showImages(live ? liveImages(live) : []);
       noticeEl.textContent = notice;
-      const empty = !outputText_.textContent && !notice && !shownImages.length;
+      const empty = !outputPane.textContent && !notice && !shownImages.length;
       output.hidden = empty;
       dom.dataset.stale = !running && attrs().output != null && attrs().outputFor !== fingerprint() ? "true" : "false";
     };
 
     const renderControls = () => {
+      if (![...language.options].some((o) => o.value === attrs().language)) {
+        language.append(el("option", { value: attrs().language, textContent: LANGUAGE_LABELS[attrs().language], disabled: true }));
+      }
       language.value = attrs().language;
       language.disabled = !!running || !editor.isEditable;
       runButton.hidden = !!running;
@@ -302,7 +313,7 @@ function nodeView(host: RunnableHost) {
       if (typeof pos !== "number" || editor.isDestroyed) return;
       const current = editor.state.doc.nodeAt(pos);
       if (!current || current.type.name !== RUNNABLE_NODE) return;
-      const has = !!text || displays.length > 0;
+      const has = !!text || displays.length > 0 || shown?.events.some((e) => e.type === "display") === true;
       const next = { output: text ? truncateOutput(text) : null, outputFor: has ? ranFor : null, displays };
       // Same Output from the same code: leave the pad untouched.
       const same = (a: string[] = [], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -314,13 +325,14 @@ function nodeView(host: RunnableHost) {
       if (running || !supported()) return;
       const abort = new AbortController();
       const events: RunEvent[] = [];
-      running = { abort, events };
+      running = { abort, events, started: false, cancelled: false };
+      const self = running;
       notice = "";
       const lang = attrs().language;
       const source = node.textContent;
       const ranFor = codeFingerprint(lang, source);
       const started = performance.now();
-      status.textContent = "Running…";
+      status.textContent = "Waiting for the Kernel…";
       renderControls();
       renderOutput();
       let restarted: string | null = null;
@@ -329,9 +341,14 @@ function nodeView(host: RunnableHost) {
         const client = await host.client();
         const stream = client.run({ kernel: host.kernel, runnableId: attrs().runnableId, language: lang, code: source, codeSource: host.codeSource }, { signal: abort.signal });
         for await (const e of stream) {
-          if (abort.signal.aborted) return;
+          if (abort.signal.aborted) break;
           if (e.type === "status") {
             status.textContent = e.text;
+            continue;
+          }
+          if (e.type === "started") {
+            self.started = true;
+            status.textContent = "Running…";
             continue;
           }
           if (e.type === "restarted") restarted = e.reason;
@@ -344,12 +361,19 @@ function nodeView(host: RunnableHost) {
       } finally {
         if (running?.abort === abort) running = null;
       }
+      if (self.cancelled) {
+        notice = "Stopped before it ran.";
+        renderOutput();
+        renderControls();
+        status.textContent = "";
+        return;
+      }
       if (abort.signal.aborted) return;
       notice = restarted ? (RESTART_NOTICE[restarted] ?? RESTART_NOTICE.stopped!) : "";
       // Keep displayed images in the BlobStore; the pad refers to them by id.
       const displays: string[] = [];
       for (const e of events) {
-        if (e.type !== "display" || !e.mime.startsWith("image/")) continue;
+        if (e.type !== "display" || !isRaster(e.mime)) continue;
         if (!host.addImage) {
           notice = [notice, "Images from this run aren't kept in the pad."].filter(Boolean).join(" ");
           break;
@@ -365,6 +389,16 @@ function nodeView(host: RunnableHost) {
       renderOutput();
       renderControls();
       if (!restarted) status.textContent = `${ok ? "Done" : "Failed"} in ${Math.round(performance.now() - started)} ms`;
+    };
+
+    /** Stop: a run still waiting for the Kernel is cancelled; a running one restarts the Kernel. */
+    const stop = () => {
+      if (running && !running.started) {
+        running.cancelled = true;
+        running.abort.abort();
+        return;
+      }
+      void restart();
     };
 
     const restart = async () => {
@@ -386,7 +420,7 @@ function nodeView(host: RunnableHost) {
       editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, language: language.value }));
     });
     runButton.addEventListener("click", () => void run());
-    stopButton.addEventListener("click", () => void restart());
+    stopButton.addEventListener("click", stop);
     restartButton.addEventListener("click", () => void restart());
     dom.addEventListener(RUN_EVENT, () => void run());
 

@@ -36,17 +36,22 @@ export type RunEvent =
   | { type: "error"; name: string; message: string; traceback?: string }
   /** The Kernel was restarted (Stop, a timeout, idle shutdown): its variables are gone. */
   | { type: "restarted"; reason: "stopped" | "timeout" | "idle" | "crashed" }
-  /** Not part of a run: the runtime is downloading (first use). */
+  /** A progress message, such as the runtime downloading on first use. */
   | { type: "status"; text: string }
+  /** The code itself started (after the Kernel, runtime and packages were ready). */
+  | { type: "started" }
   | { type: "exit"; ok: boolean; ms: number };
 
 export interface SandboxClient {
   /** Languages this Sandbox runs. */
   readonly languages: readonly SandboxLanguage[];
   /**
-   * Runs code in its Kernel, starting the Kernel if needed. The stream ends
-   * after `exit`, or after `restarted` when the Kernel is restarted mid-run.
-   * Aborting `signal` stops listening; it does not stop the code (use `restart`).
+   * Runs code in its Kernel, starting the Kernel if needed. Runs in one Kernel
+   * are queued. The stream ends after `exit`, or after `restarted` when the
+   * Kernel is restarted mid-run (a Kernel restarted while idle reports
+   * `restarted` at the start of the next run instead). Aborting `signal`
+   * before `started` cancels the run; after that it only stops listening,
+   * and `restart` stops the code.
    */
   run(request: RunRequest, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
   /** Ends a Kernel (and any run in it). The next run starts a new one. */
@@ -89,14 +94,16 @@ export interface SandboxConnection {
   dispose(): void;
 }
 
-/** Loads the client on first use and shares it. The owner (the provider) calls `dispose()`. */
+/**
+ * Loads the client on first use and shares it. The owner (the provider) calls
+ * `dispose()` to free it; a later `client()` loads a fresh one (React Strict
+ * Mode unmounts and remounts the same provider).
+ */
 export function connectSandbox(loader: SandboxLoader, settings: SandboxSettings): SandboxConnection {
   let pending: Promise<SandboxClient> | null = null;
-  let disposed = false;
   return {
     languages: loader.languages,
     client() {
-      if (disposed) return Promise.reject(new Error("zreader: the Sandbox was disposed"));
       if (!pending) {
         pending = loader.load(settings);
         pending.catch(() => (pending = null));
@@ -104,7 +111,6 @@ export function connectSandbox(loader: SandboxLoader, settings: SandboxSettings)
       return pending;
     },
     dispose() {
-      disposed = true;
       void pending?.then((c) => c.dispose(), () => {});
       pending = null;
     },

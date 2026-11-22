@@ -235,7 +235,7 @@ Three stores, by kind of data:
 graph LR
     node["RunnableCode node<br/><small>editor</small>"] -- "run(request)" --> host["KernelHost<br/><small>queue, timeouts, idle</small>"]
     host -- "acorn / sucrase" --> host
-    host -- "MessageChannel" --> frame["sandboxed srcdoc iframe<br/><small>opaque origin, own CSP</small>"]
+    host -- "MessageChannel" --> frame["sandboxed srcdoc iframes<br/><small>one per language family, own CSP</small>"]
     frame --> js["JS / TS Kernel worker"]
     frame --> py["Python Kernel worker<br/><small>Pyodide from indexURL</small>"]
     node -- "display images" --> blobs2["BlobStore"]

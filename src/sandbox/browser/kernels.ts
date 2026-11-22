@@ -104,7 +104,6 @@ export function frameMain(config: FrameConfig) {
   parent.postMessage({ type: "zr-sandbox-ready" }, "*", [channel.port2]);
 }
 
-/** The JavaScript Kernel worker. Code arrives already rewritten (see rewrite.ts). */
 /**
  * Runs in every Kernel before user code: `fetch` to an origin the site hasn't
  * granted fails with a clear message (the CSP is what actually blocks it), and
@@ -150,6 +149,7 @@ export function installFetchGuard(allowed: string[] | true) {
 }
 
 
+/** The JavaScript Kernel worker. Code arrives already rewritten (see rewrite.ts). */
 export function javascriptKernel(config: { network: string[] | true }) {
   let runId = 0;
   const post = (event: Record<string, unknown>) => postMessage({ runId, event });
@@ -193,10 +193,11 @@ export function javascriptKernel(config: { network: string[] | true }) {
     if (typeof OffscreenCanvas !== "undefined" && x instanceof OffscreenCanvas) blob = await x.convertToBlob({ type: "image/png" });
     else if (x instanceof Blob) blob = x;
     else if (typeof x === "string") {
-      const m = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/is.exec(x.trim());
+      const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.*)$/is.exec(x.trim());
       if (m) return void post({ type: "display", mime: m[1]!.toLowerCase(), data: m[2]!.replace(/\s+/g, "") });
     }
-    if (!blob || !blob.type.startsWith("image/")) throw new TypeError("display() takes an OffscreenCanvas, an image Blob or an image data URL");
+    // Raster images only: an SVG could run script if a reader opened it on its own.
+    if (!blob || !/^image\/(png|jpeg|gif|webp)$/.test(blob.type)) throw new TypeError("display() takes an OffscreenCanvas, or a PNG, JPEG, GIF or WebP Blob or data URL");
     post({ type: "display", mime: blob.type, data: toBase64(await blob.arrayBuffer()) });
   };
   const AsyncFunction = (async () => {}).constructor as new (body: string) => () => Promise<unknown>;
@@ -296,7 +297,9 @@ export function pythonKernel(config: { indexURL: string; network: string[] | tru
       py.setStderr({ batched: (s) => post({ type: "stderr", text: `${s}\n` }) });
       // Packages Pyodide ships (numpy, pandas, …) come from indexURL; nothing else is fetched.
       await py.loadPackagesFromImports(m.code, { messageCallback: () => {}, errorCallback: (s) => post({ type: "stderr", text: `${s}\n` }) });
-      if (/\bmicropip\b/.test(m.code) && !micropipGuarded) {
+      // Guard micropip before anything can use it: right away when packages are granted (PyPI is
+      // reachable then), otherwise when code mentions it (installs fail on the CSP anyway).
+      if (!micropipGuarded && (config.packages.length > 0 || /\bmicropip\b/.test(m.code))) {
         await py.loadPackage("micropip", { messageCallback: () => {} });
         (py as unknown as { globals: { set(k: string, v: unknown): void } }).globals.set("_zr_allowed", py.toPy(config.packages));
         await py.runPythonAsync(MICROPIP_GUARD);

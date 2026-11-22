@@ -4,14 +4,14 @@
  *   <ReaderRoot><ScratchpadSandbox />{children}</ReaderRoot>
  *   // or: <ReaderProvider sandbox={browserSandbox()}>
  *
- * Every Kernel runs in a worker inside one hidden, sandboxed iframe with an
- * opaque origin: code can't read the page, its storage or the reader's other
+ * Every Kernel runs in a worker inside a hidden, sandboxed iframe (one for
+ * Python, one for JavaScript and TypeScript) with an opaque origin: code can't read the page, its storage or the reader's other
  * data, and can't reach the network unless the site grants it (ADR 0001).
  */
 import { useMemo, useRef } from "react";
 import type { DangerousPermissions, SandboxLanguage, SandboxLoader, SandboxSettings } from "zreader";
 import { useRegisterSandbox } from "zreader/react";
-import { KernelHost, isFrameHandshake } from "./host";
+import { KernelHost, groupOf, isFrameHandshake } from "./host";
 import { frameMain, javascriptKernel, kernelSource, pythonKernel, sourceOf } from "./kernels";
 import { rewriteJavaScript } from "./rewrite";
 
@@ -118,10 +118,10 @@ function openFrame(config: Parameters<typeof frameMain>[0]): Promise<{ port: Mes
   });
 }
 
-/** What the Sandbox frame is started with: its CSP and the Kernel sources. */
 /** PyPI, which micropip needs once packages are granted. */
 export const PYPI_ORIGINS = ["https://pypi.org", "https://files.pythonhosted.org"];
 
+/** What a Sandbox frame is started with: its CSP and the Kernel sources, for the languages it runs. */
 export function frameConfig(
   options: BrowserSandboxOptions & { languages: readonly SandboxLanguage[]; dangerousPermissions?: DangerousPermissions },
 ): Parameters<typeof frameMain>[0] {
@@ -147,7 +147,15 @@ export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoad
         prepare: preparer(options.typescript),
         runTimeoutMs: options.runTimeoutMs ?? settings?.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
         idleTimeoutMs: options.idleTimeoutMs ?? settings?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
-        openFrame: () => openFrame(frameConfig({ ...options, languages, dangerousPermissions: settings?.permissions?.scratchpad.dangerousPermissions })),
+        // One frame per group, each with only the origins its Kernels need.
+        openFrame: (group) =>
+          openFrame(
+            frameConfig({
+              ...options,
+              languages: languages.filter((l) => groupOf(l) === group),
+              dangerousPermissions: settings?.permissions?.scratchpad.dangerousPermissions,
+            }),
+          ),
       }),
   };
 }
@@ -169,5 +177,5 @@ export function ScratchpadSandbox({ typescript, ...props }: ScratchpadSandboxPro
   return null;
 }
 
-export { KernelHost, isFrameHandshake } from "./host";
-export type { KernelHostOptions } from "./host";
+export { KernelHost, groupOf, isFrameHandshake } from "./host";
+export type { KernelGroup, KernelHostOptions } from "./host";
