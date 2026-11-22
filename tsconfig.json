@@ -60,6 +60,9 @@
       "zreader/math/temml": [
         "./src/math/temml.tsx"
       ],
+      "zreader/sandbox/browser": [
+        "./src/sandbox/browser/index.tsx"
+      ],
       "zreader/sw": [
         "./src/sw/index.ts"
       ],

@@ -115,6 +115,10 @@
       "types": "./dist/math/temml.d.ts",
       "default": "./dist/math/temml.js"
     },
+    "./sandbox/browser": {
+      "types": "./dist/sandbox/browser/index.d.ts",
+      "default": "./dist/sandbox/browser/index.js"
+    },
     "./agent": {
       "types": "./dist/agent/index.d.ts",
       "browser": "./dist/stubs/server-only.js",
@@ -150,6 +154,7 @@
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",
     "@tailwindcss/typography": "^0.5.20",
+    "acorn": "^8.15.0",
     "@types/hast": "^3.0.4",
     "approx-string-match": "^2.0.1",
     "class-variance-authority": "^0.7.1",

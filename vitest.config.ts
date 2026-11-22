@@ -10,6 +10,7 @@ export default defineConfig({
       { find: /^zreader\/plugins\/agent$/, replacement: r("./src/plugins/agent/index.ts") },
       { find: /^zreader\/react$/, replacement: r("./src/react/index.ts") },
       { find: /^zreader\/editor$/, replacement: r("./src/editor/index.tsx") },
+      { find: /^zreader\/sandbox\/browser$/, replacement: r("./src/sandbox/browser/index.tsx") },
       { find: /^zreader\/next\/client$/, replacement: r("./src/next/client/index.tsx") },
       { find: /^zreader\/next\/server$/, replacement: r("./src/next/server/index.tsx") },
       { find: /^zreader\/rehype$/, replacement: r("./src/rehype/index.ts") },

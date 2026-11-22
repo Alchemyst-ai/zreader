@@ -1,6 +1,7 @@
 import { Link as RouterLink, Route, Routes, useParams } from "react-router";
 import { BookOpenIcon } from "lucide-react";
 import { loadMath } from "zreader/math/katex";
+import { browserSandbox } from "zreader/sandbox/browser";
 import { BookContents, BookShelf, Callout, Reader, ReaderProvider, ZImage, type LinkComponent } from "zreader/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,9 @@ import { books, chapterContent } from "./books";
 const Link: LinkComponent = ({ href, ...props }) => <RouterLink to={href} {...props} />;
 
 const mdxComponents = { Callout, img: ZImage };
+
+/** RunnableCode in the scratchpad, run in the reader's browser. */
+const sandbox = browserSandbox();
 
 function Home() {
   return (
@@ -65,7 +69,7 @@ function NotFound() {
 
 export function App() {
   return (
-    <ReaderProvider books={books} Link={Link} options={{ basePath: "/books" }} math={loadMath}>
+    <ReaderProvider books={books} Link={Link} options={{ basePath: "/books" }} math={loadMath} sandbox={sandbox}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/books" element={<BookShelf />} />
