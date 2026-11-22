@@ -2,10 +2,16 @@
 
 ## Unreleased
 
-Groundwork for RunnableCode, code readers can run in the scratchpad ([#2](https://github.com/Alchemyst-ai/zreader/issues/2)). Nothing changes for readers or site owners yet.
+**Runnable code.** Readers can add RunnableCode to any scratchpad: Python, JavaScript or TypeScript they run in place, with the Output of the last run saved in the pad. See [Runnable code](./docs/sandbox.md) ([#2](https://github.com/Alchemyst-ai/zreader/issues/2)).
 
-- **Scratchpad:** optional features (math today) are registered in one list that decides the editor's extensions, its toolbar and whether a pad's cached JSON can be reused. Behaviour is unchanged.
-- **Docs:** a [glossary](./GLOSSARY.md) of domain terms and [architecture decision records](./docs/adr/) for RunnableCode: the browser runs code by default, Outputs are stored in the pad's Markdown, Stop restarts the Kernel, and how Dangerous permissions are granted.
+- **Turn it on** with `<ScratchpadSandbox />` from the new `zreader/sandbox/browser` entry, or `<ReaderProvider sandbox={browserSandbox()}>`. Without a Sandbox, RunnableCode shows as plain code blocks.
+- **Runs in the reader's browser:** Kernels are workers in a hidden opaque-origin iframe that can't read the page or the reader's data, and can't reach the network. Python uses Pyodide, loaded from jsDelivr on first use or self-hosted with `pyodideIndexURL`. JavaScript keeps top-level declarations between runs, shows the last expression and supports top-level `await`. TypeScript needs `sucrase` (a new optional peer dependency) and `typescript={() => import("sucrase")}`.
+- **Notebook-style:** variables carry over in a pad, Shift+Enter runs, Stop restarts the Kernel, matplotlib figures and `display(canvas)` show images (kept with reader images), and an Output is marked when the code changes.
+- **Stored as Markdown:** a ```` ```python run id=… ```` fence, an ```` ```output for=… ```` fence and `![output](zr-blob:…)` images. Exported pads read as ordinary Markdown.
+- **New `reader.sandbox` options:** `scopes` per pad kind, `kernel.idleTimeoutMs` (15 minutes) and `kernel.runTimeoutMs` (30 seconds), and `permissions.scratchpad.dangerousPermissions` (`network` origins, Python `packages`), all off by default and settable per shelf.
+- **New dependency:** `acorn`, loaded only when JavaScript first runs.
+- **Scratchpad internals:** optional features (math, RunnableCode) are registered in one list that decides the editor's extensions, its toolbar and whether a pad's cached JSON can be reused.
+- **Docs:** a [glossary](./GLOSSARY.md) of domain terms and [architecture decision records](./docs/adr/).
 
 ## 0.4.0
 

@@ -41,6 +41,15 @@ Go through this before you ship a zreader site, and again when you upgrade to 0.
 - [ ] **Deploy once with a saved book.** Save a book, deploy a change, and reload it online: you should get the new version (pages and `/_next/` files are network first).
 - [ ] **Plan for resets.** Change `cacheName` in `serviceWorkerScript({ cacheName })` to drop every saved book (for example after a breaking change to page markup).
 
+## Runnable code (if enabled)
+
+- [ ] **Decide where it runs.** Turn off pads that shouldn't have it with `reader.sandbox.scopes`, per site or per shelf. See [Runnable code](./sandbox.md).
+- [ ] **Know the third-party request.** The first Python run downloads Pyodide (about 10 MB) from `cdn.jsdelivr.net`. To avoid that, self-host it and set `pyodideIndexURL` (served with CORS allowed).
+- [ ] **Grant only what books need.** `dangerousPermissions.network` and `packages` are off by default; list exact origins and package names rather than `network: true`.
+- [ ] **If you send a Content-Security-Policy,** the Sandbox frame inherits it: allow an inline script, `blob:` workers, `'unsafe-eval'`, `'wasm-unsafe-eval'` and the Pyodide origin, then run Python and JavaScript once.
+- [ ] **TypeScript:** install `sucrase` and pass `typescript={() => import("sucrase")}` from a client component.
+- [ ] **Run the real-browser check:** `npm run build`, then `node scripts/sandbox-check/run.mjs` and open it in Chrome, Firefox and Safari (including iOS), or `--auto` with Playwright.
+
 ## Agents
 
 - [ ] **Set `origin`** in `createAgentHandler({ origin })` so links in `.md` twins and `llms.txt` point at your public domain, not an internal host.
@@ -57,3 +66,4 @@ The automated tests use simulated browser APIs for these, so check them by hand 
 - [ ] Highlights over math and over figure captions: the Highlights list, Copy and Quote to scratchpad should show `$TeX$`.
 - [ ] Formula size in the scratchpad, in the desktop panel and the mobile drawer: an inline `$\frac{1}{n^2}$` should read at the size of the surrounding text. Adjust with `--zr-math-scale` on `.zr-editor` if your pad font differs a lot.
 - [ ] Formulas in the scratchpad: typing `$…$` and `$$ `, the Σ button, click to edit, Escape to cancel.
+- [ ] RunnableCode, if enabled: Run and Shift+Enter, Stop on an endless loop, a matplotlib plot, and a pad reloaded with its Output, in the desktop panel and the mobile drawer.

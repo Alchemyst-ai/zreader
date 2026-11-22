@@ -18,6 +18,7 @@ graph TB
         nextclient["zreader/next/client<br/><small>NextReaderProvider</small>"]
         rehype["zreader/rehype<br/><small>rehypeBlocks</small>"]
         math["zreader/math/katex, /temml<br/><small>scratchpad math (lazy engine)</small>"]
+        sandbox["zreader/sandbox/browser<br/><small>RunnableCode Kernels (iframe + workers)</small>"]
         sw["zreader/sw<br/><small>offline service worker script</small>"]
     end
 
@@ -207,6 +208,7 @@ graph TB
     provider --> blobs["BlobStore<br/><small>IndexedDB &lt;prefix&gt;:blobs</small>"]
     blobs --> pad["scratchpad + notes<br/><small>zr-blob:&lt;id&gt; images</small>"]
     provider -. "math loader (optional)" .-> pad
+    provider -. "Sandbox (optional)" .-> pad
     ui --> viewer["ImageViewer<br/><small>img[data-zr-zoom]</small>"]
     ui -. "Save for offline" .-> swc["service worker<br/><small>Cache API, zreader/sw</small>"]
 ```
@@ -225,7 +227,21 @@ Three stores, by kind of data:
 
 **The scratchpad's Markdown.** Each editor gets its own `marked` instance, so the math tokenizers it registers never reach other Tiptap editors on the page. Images and math are atom nodes with custom views; the stored format stays Markdown.
 
-**Optional pad features.** Features that only exist when the reader's setup provides something (math today, needing a math loader) are registered in one list, `PAD_FEATURES`. Each feature declares the node types it adds, how to spot it in Markdown, and the extensions and toolbar item it turns on. `resolvePadFeatures` turns that list into the editor's extensions and toolbar, and decides which content to load: a pad's cached JSON is used only when it was made with the same features that are on now; otherwise the editor loads the Markdown. So a pad saved with math still opens, as plain text, on a page without a math loader, and a pad saved without it is reparsed once math is turned on. A new optional feature is one more entry in the list, not new branches in the editor.
+**Optional pad features.** Features that only exist when the reader's setup provides something (math today, needing a math loader) are registered in one list, `PAD_FEATURES`. Each feature declares the node types it adds, how to spot it in Markdown, and the extensions and toolbar item it turns on. `resolvePadFeatures` turns that list into the editor's extensions and toolbar, and decides which content to load: a pad's cached JSON is used only when it was made with the same features that are on now; otherwise the editor loads the Markdown. So a pad saved with math still opens, as plain text, on a page without a math loader, and a pad saved without it is reparsed once math is turned on. A new optional feature is one more entry in the list, not new branches in the editor. RunnableCode is the second entry: it needs a Sandbox from the provider and `reader.sandbox.scopes` allowing the pad's scope.
+
+**RunnableCode.** The scratchpad talks to a `SandboxClient` (the protocol in `zreader` core), which the provider loads once from its `SandboxLoader`, hands the site's `reader.sandbox` settings, and disposes on unmount. The browser Sandbox is one client:
+
+```mermaid
+graph LR
+    node["RunnableCode node<br/><small>editor</small>"] -- "run(request)" --> host["KernelHost<br/><small>queue, timeouts, idle</small>"]
+    host -- "acorn / sucrase" --> host
+    host -- "MessageChannel" --> frame["sandboxed srcdoc iframe<br/><small>opaque origin, own CSP</small>"]
+    frame --> js["JS / TS Kernel worker"]
+    frame --> py["Python Kernel worker<br/><small>Pyodide from indexURL</small>"]
+    node -- "display images" --> blobs2["BlobStore"]
+```
+
+The page side owns everything with state (the run queue per Kernel, the run timeout, idle shutdown), so the frame only starts, stops and relays workers. Its code and the Kernels are self-contained functions turned into source with `toString()`, so nothing is fetched to start them.
 
 ## Source layout
 
@@ -235,6 +251,7 @@ src/
   react/           zreader/react      provider, components, hooks, shadcn/ui parts
   editor/          zreader/editor     the Tiptap scratchpad (lazy-loaded), image and math nodes, the optional-feature registry
   math/            zreader/math/*     scratchpad math loaders (KaTeX, Temml)
+  sandbox/browser/ zreader/sandbox/browser  the browser Sandbox: Kernel host, frame and Kernel workers, JS rewrite
   sw/              zreader/sw         the offline service worker script
   rehype/          zreader/rehype     rehypeBlocks
   config/          zreader/config     defineConfig, resolveConfig, bookshelves, validation
@@ -259,7 +276,7 @@ Plugins live **beside** `src/agent/`, not inside it, so the dependency only ever
 | --- | --- | --- |
 | Node, split | `core`, `content`, `next/server`, `rehype`, `sw`, `agent`, `plugins/agent`, `virtual-config`, `user-config`, `stubs` | ESM |
 | Node, unsplit | `config`, `next` | ESM + CJS (loaded from `next.config.*`) |
-| Browser, unsplit | `react`, `editor`, `next/client`, `agent/react`, `math/katex`, `math/temml` | ESM |
+| Browser, unsplit | `react`, `editor`, `next/client`, `agent/react`, `math/katex`, `math/temml`, `sandbox/browser` | ESM |
 
 Then `use-client.mjs` re-adds the `"use client"` directive that Rollup drops, and the checks run.
 
@@ -267,7 +284,7 @@ Then `use-client.mjs` re-adds the `"use client"` directive that Rollup drops, an
 
 | Script | Fails the build when |
 | --- | --- |
-| `check-bundles.mjs` | A browser bundle (`react`, `editor`, `agent/react`, `rehype`, `core`, `math/katex`, `math/temml`) imports `next`, `next/*` or a Node built-in |
+| `check-bundles.mjs` | A browser bundle (`react`, `editor`, `agent/react`, `rehype`, `core`, `math/katex`, `math/temml`, `sandbox/browser`) imports `next`, `next/*` or a Node built-in |
 | `check-bundles.mjs` | `zreader/plugins/agent` statically imports `unified`, `zreader/content` or `zreader/virtual-config` — `reader.config.ts` is loaded by jiti inside `next.config`, so the plugin factories must stay light |
 | `publint` + `attw` | The `exports` map, types or conditions don't resolve for any consumer |
 

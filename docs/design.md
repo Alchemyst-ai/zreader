@@ -7,7 +7,7 @@ Why zreader works the way it does. [Architecture](./architecture.md) describes t
 1. **Reader data belongs to the reader.** Highlights, notes, progress, scratchpads and the images in them live in the browser. No account, no server writes. The cost is that data doesn't follow a reader between devices, so backup and restore are first-class.
 2. **Content is files.** A book is a folder of Markdown, MDX or HTML. Fixing a typo is an edit, not a re-export, so anchoring has to survive edits.
 3. **Everything heavy happens at build time.** Sanitizing, measuring images and typesetting math run when a chapter is compiled, on the server. Readers download HTML and CSS, not parsers or engines.
-4. **Every feature past the core is opt-in** and costs nothing when off: math, offline reading, scratchpad math, agent plugins.
+4. **Every feature past the core is opt-in** and costs nothing when off: math, offline reading, scratchpad math, runnable code, agent plugins.
 5. **Safe by default for content you didn't write.** `.md` and `.html` chapters go through DOMPurify with no inline styles; new features (SVG, MathML, remote images) are added as narrow, configurable exceptions rather than by loosening the defaults. MDX is code and is trusted.
 
 ## Anchoring
@@ -55,6 +55,18 @@ Highlights are anchored to **block ids** derived from each block's text (`p-3fa9
 **Each scratchpad editor has its own Markdown parser.** Tiptap's Markdown extension registers tokenizers on a shared `marked` instance by default, so the pad's math rules would have changed every other Tiptap editor on the page, silently deleting `$…$` text in an app's own editor. A private `marked` instance per editor costs one dependency.
 
 **Optional pad features share one registry.** Each optional feature changes three things: which extensions load, whether a pad's cached JSON still matches the editor, and the toolbar. Spreading those checks through the editor per feature would have meant three edits for every new one, and getting the JSON check wrong loses or garbles a reader's notes. The registry keeps the rule in one place: cached JSON is only trusted when it was made with the same features, and the Markdown is the fallback.
+
+## Runnable code
+
+**The browser runs code by default.** zreader works without a server, so RunnableCode runs in the reader's browser, in an opaque-origin iframe that can't reach the page or the reader's data. WebContainers were rejected for their license, the COOP/COEP headers they need and the lack of Python ([ADR 0001](./adr/0001-browser-sandbox-by-default.md)).
+
+**Config limits, the page turns it on.** Like scratchpad math, a Sandbox is a module, so it's turned on with a component or provider prop; `reader.sandbox` only narrows where it runs and what it may do, and only the site owner grants Dangerous permissions.
+
+**Outputs live in the pad's Markdown**, as text with no timing, so an exported pad reads as a notebook and re-running unchanged code doesn't rewrite it ([ADR 0002](./adr/0002-outputs-stored-in-pad-markdown.md)). Images go to the reader-images store like pasted ones.
+
+**Stop restarts the Kernel.** Keeping variables across an interrupt needs `SharedArrayBuffer`, and so cross-origin isolation on every reader page ([ADR 0003](./adr/0003-no-cross-origin-isolation-stop-restarts-kernel.md)).
+
+**JavaScript is rewritten on the page, not in the Kernel.** acorn turns top-level declarations into assignments, so a later run sees them and can declare them again, and returns the last expression. Doing it on the page keeps the Kernel small and lets acorn be code-split.
 
 ## Storage
 

@@ -30,6 +30,7 @@ Browser. The reader UI. See [React](./react.md).
 - `useSettings()`, `useHighlights(bookId, chapterId?)`, `useBookmarks(bookId)`, `useProgress(bookId)`, `usePad(scope)`
 - `useBlobStore()`, `useBlobUrl(src)`, `useBlobUsage()`, `useAddImage()`
 - `useMathLoader()`, `useRegisterMath(loader)`
+- `useSandbox()`, `useRegisterSandbox(loader)`: the Sandbox that runs RunnableCode
 - `useHydrated()`, `useMediaQuery(query, serverValue?)`, `useIsDesktop()`
 - `useChapterEngine(options)` (`ChapterEngine`, `ChapterEngineOptions`, `SelectionState`), `useValueStore(store)`
 
@@ -163,6 +164,7 @@ Browser.
 Browser. Lazy-loaded by the scratchpad; import it directly only for a custom editor UI.
 
 - `ScratchpadEditor` (default export too) with `ScratchpadEditorProps`: `scope`, `placeholder?`, `autoFocus?`, `onFocus?`, `className?`
+- RunnableCode turns on when the provider has a Sandbox (`useSandbox()`)
 
 Needs the Tiptap peer dependencies.
 
@@ -175,6 +177,17 @@ Browser. Math in the scratchpad. See [Math → In the scratchpad](./math.md#in-t
 - `withInlineStyle(renderer, inlineStyle?)`: applies the pad's inline display style to any renderer (`PadMathOptions`)
 
 Each needs its engine installed (`katex` or `temml`).
+
+## `zreader/sandbox/browser`
+
+Browser. RunnableCode run in the reader's browser. See [Runnable code](./sandbox.md).
+
+- `ScratchpadSandbox` (`ScratchpadSandboxProps`): render inside the provider to turn on RunnableCode
+- `browserSandbox(options?)`: a `SandboxLoader` for `<ReaderProvider sandbox>`. `BrowserSandboxOptions`: `languages`, `runTimeoutMs`, `idleTimeoutMs`, `pyodideIndexURL`, `typescript` (a loader for `sucrase`)
+- `PYODIDE_VERSION`, `DEFAULT_PYODIDE_INDEX_URL`, `BROWSER_LANGUAGES`, `DEFAULT_RUN_TIMEOUT_MS`, `DEFAULT_IDLE_TIMEOUT_MS`
+- Lower level: `KernelHost` (`KernelHostOptions`), `frameConfig`, `kernelCsp`, `stripTypes`, `isFrameHandshake`
+
+TypeScript needs `sucrase` installed. Pyodide is fetched at run time, never bundled.
 
 ## `zreader/sw`
 
@@ -211,6 +224,12 @@ The store's methods:
 - Scratchpads: `savePad`, `appendToPad`, `clearPad`
 - Cells for subscriptions: `settings()`, `highlights(bookId)`, `bookmarks(bookId)`, `progress(bookId)`, `pad(scope)`
 - Lifecycle: `keys`, `flush`, `connect`, `reloadAll`
+
+**Sandbox protocol** (RunnableCode; see [Runnable code](./sandbox.md))
+
+- `SandboxClient` (`languages`, `run(request, { signal })`, `restart(kernel, language)`, `dispose()`), `SandboxLoader` (`languages`, `load(settings)`), `SandboxSettings`, `DangerousPermissions`
+- `RunRequest`, `RunEvent` (`stdout`, `stderr`, `result`, `display`, `error`, `restarted`, `status`, `exit`), `SandboxLanguage`, `CodeSource`, `SANDBOX_LANGUAGES`
+- `connectSandbox(loader, settings)` (`SandboxConnection`), `TAB_ID`
 
 **Backup**
 

@@ -25,6 +25,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | [Copy Reference](./copy-reference.md) | The "Copy reference" button, Open in ChatGPT / Claude / Grok, `<MarkdownAlternate>` |
 | [Formats: Markdown, MDX, HTML, PDF](./formats.md) | What each format does in the reader and in its `.md` twin |
 | [Math](./math.md) | TeX math with KaTeX, Temml or MathJax, rendered as MathML |
+| [Runnable code](./sandbox.md) | Python, JavaScript and TypeScript readers run in the scratchpad, the browser Sandbox, permissions |
 | [Images](./images.md) | Images next to chapters, URLs and base64, sizes, `next/image`, captions, the viewer, covers |
 | [Styling](./styling.md) | `styles.css` vs `tailwind.css`, theme tokens, themes |
 
@@ -50,6 +51,7 @@ zreader is a localStorage-first, mobile-first book reader for React. Readers get
 | `zreader/rehype` | Build time | `rehypeBlocks` for your own MDX/Markdown pipeline |
 | `zreader/sw` | Anywhere | The offline-reading service worker script |
 | `zreader/math/katex`, `zreader/math/temml` | Browser | Math in the scratchpad |
+| `zreader/sandbox/browser` | Browser | RunnableCode in the scratchpad, run in the reader's browser |
 | `zreader/content` | Node | Content layer for `content/books/**` |
 | `zreader/config` | Node | `defineConfig`, `glob`, `z` for `reader.config.ts` |
 | `zreader/next` | Node (`next.config`) | `withReader()` |
