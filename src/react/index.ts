@@ -51,7 +51,7 @@ export { downloadFile, copyText } from "./download";
 export { ImageViewer, useImageViewer, describeImage, ZOOMABLE_SELECTOR, type ImageViewerProps, type ViewerImage } from "./components/image-viewer";
 export { SaveOffline, useOfflineBook, type OfflineStatus } from "./components/offline";
 export { BlobImage, useAddImage, imageFiles, noteImages, noteText, type BlobImageProps } from "./components/blob-image";
-export { Callout, ZImage, type CalloutProps, type ZImageProps } from "./components/mdx";
+export { Callout, RunnableCode, ZImage, type CalloutProps, type RunnableCodeProps, type ZImageProps } from "./components/mdx";
 export * from "./tokens";
 export type {
   BookMeta,

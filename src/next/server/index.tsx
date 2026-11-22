@@ -17,7 +17,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import config from "zreader/virtual-config";
 import { createAssetHandler, getShelf, htmlToReact, type MdxComponents } from "zreader/content";
-import { Callout, Reader, type ReaderProps, type ReaderProviderProps } from "zreader/react";
+import { Callout, Reader, RunnableCode, type ReaderProps, type ReaderProviderProps } from "zreader/react";
 import { NextReaderProvider } from "zreader/next/client";
 import { CopyReference, MarkdownAlternate, type BuiltInProvider } from "zreader/agent/react";
 import type { BookMeta } from "zreader";
@@ -29,7 +29,7 @@ import { SW_HEADERS, serviceWorkerScript, type ServiceWorkerOptions } from "zrea
  * Default MDX components (built here, in a server module, so RSC pages get real
  * component references): `<Content components={mdxComponents} />`.
  */
-export const mdxComponents = { Callout };
+export const mdxComponents = { Callout, RunnableCode };
 
 /** Serializable options for `<ReaderRoot agent>` (see `<CopyReference>`). */
 export interface ReaderRootAgentOptions {
@@ -169,7 +169,7 @@ export async function ReaderChapter({ book, chapter, shelf, components, ...props
   const hit = await api.getChapter(book, chapter);
   if (!hit) notFound();
   const [rendered, resolved] = await Promise.all([api.renderChapter(hit.chapter), api.shelf()]);
-  const all = { ...mdxComponents, img: imageFor(resolved), ...components } as MdxComponents;
+  const all = { ...mdxComponents, img: imageFor(resolved), ...components } as unknown as MdxComponents;
   // Markdown/HTML chapters are rendered as React so `img` can be next/image.
   return (
     <Reader {...props} book={book} chapter={chapter} toc={rendered.toc} contentHash={rendered.contentHash}>

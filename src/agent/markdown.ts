@@ -11,7 +11,7 @@ import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import type { BookEntry, ChapterEntry, ChapterLookup } from "zreader/content";
-import type { BookMeta, ChapterMeta } from "zreader";
+import { fenceAttr, isRunnableMeta, sandboxLanguage, type BookMeta, type ChapterMeta } from "zreader";
 import type { NotFoundInfo } from "../plugins/agent/types";
 
 /** Where the reader lives: absolute origin + the reader's basePath. */
@@ -57,6 +57,63 @@ export function markdownPageUrl(ctx: AgentUrlContext, book?: string, chapter?: s
 
 // ---------------------------------------------------------------- conversion
 
+const FENCE_LINE = /^((?:[ \t]*>)*[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?[ \t]*)(`{3,}|~{3,})(.*)$/;
+
+/**
+ * RunnableCode fences as plain fences, for `.md` twins: ```` ```py run id=k3 ````
+ * becomes ```` ```python ```` and its ```` ```output for=k3 ```` becomes
+ * ```` ```text ````. Every other line is left exactly as written.
+ */
+export function plainRunnableFences(markdown: string): string {
+  if (!/(?:`{3,}|~{3,})[ \t]*\w+[ \t]+(?:[^\n]*[ \t])?run(?:[ \t]|$)/m.test(markdown)) return markdown;
+  const lines = markdown.split("\n");
+  let open: { char: string; len: number } | null = null;
+  let afterRunnable = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const m = FENCE_LINE.exec(line);
+    if (open) {
+      // A closing fence: same character, at least as long, no info string.
+      if (m && m[2]![0] === open.char && m[2]!.length >= open.len && !m[3]!.trim()) open = null;
+      continue;
+    }
+    if (!m) {
+      if (line.replace(/^(?:[ \t]*>)*/, "").trim()) afterRunnable = false;
+      continue;
+    }
+    const [, prefix, ticks, rest] = m as unknown as [string, string, string, string];
+    open = { char: ticks[0]!, len: ticks.length };
+    const [info = "", ...metaWords] = rest.trim().split(/\s+/);
+    const meta = metaWords.join(" ");
+    const language = sandboxLanguage(info);
+    if (language && isRunnableMeta(meta)) {
+      lines[i] = `${prefix}${ticks}${language}`;
+      afterRunnable = true;
+      continue;
+    }
+    if (info === "output" && (fenceAttr(meta, "for") || afterRunnable)) lines[i] = `${prefix}${ticks}text`;
+    afterRunnable = false;
+  }
+  return lines.join("\n");
+}
+
+/** A JSX attribute that is a string, or a plain string literal expression (`code={"…"}`). */
+function jsxString(node: Node, name: string): string | undefined {
+  const attrs = (node.attributes as JsxAttribute[] | undefined) ?? [];
+  const a = attrs.find((x) => x.type === "mdxJsxAttribute" && x.name === name);
+  if (typeof a?.value === "string") return a.value;
+  const expr = (a?.value as { type?: string; value?: string } | undefined)?.value?.trim();
+  if (!expr) return undefined;
+  try {
+    if (/^"(?:[^"\\]|\\.)*"$/.test(expr)) return JSON.parse(expr) as string;
+    if (/^'(?:[^'\\]|\\.)*'$/.test(expr)) return JSON.parse(`"${expr.slice(1, -1).replace(/"/g, '\\"').replace(/\\'/g, "'")}"`) as string;
+    if (/^`[^`$]*`$/.test(expr)) return expr.slice(1, -1);
+  } catch {
+    /* not a plain string */
+  }
+  return undefined;
+}
+
 type Node = { type: string; children?: Node[]; [k: string]: unknown };
 type JsxAttribute = { type: string; name?: string; value?: unknown };
 
@@ -100,6 +157,29 @@ function stripMdx(nodes: Node[]): Node[] {
     const only = node.type === "paragraph" && node.children?.length === 1 ? node.children[0]! : null;
     if (only?.type === "mdxJsxTextElement") {
       node = { ...only, type: "mdxJsxFlowElement", children: only.children?.length ? [{ type: "paragraph", children: only.children }] : [] };
+    }
+    if (node.type === "code") {
+      // RunnableCode and its Output as plain fences.
+      const language = sandboxLanguage(node.lang as string);
+      const prev = out[out.length - 1] as Node & { runnable?: boolean } | undefined;
+      if (language && isRunnableMeta(node.meta as string)) {
+        out.push({ ...node, lang: language, meta: null, runnable: true } as Node);
+        continue;
+      }
+      if (node.lang === "output" && (fenceAttr(node.meta as string, "for") || prev?.runnable)) {
+        out.push({ ...node, lang: "text", meta: null });
+        continue;
+      }
+    }
+    if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && node.name === "RunnableCode") {
+      const code = jsxString(node, "code");
+      if (code != null) {
+        const info = jsxString(node, "language") ?? "";
+        out.push({ type: "code", lang: sandboxLanguage(info) ?? info, meta: null, value: code });
+        const output = jsxString(node, "output");
+        if (output != null) out.push({ type: "code", lang: "text", meta: null, value: output });
+      }
+      continue;
     }
     const children = node.children ? stripMdx(node.children) : undefined;
     if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
@@ -222,7 +302,7 @@ export function chapterBodyToMarkdown(entry: Pick<ChapterEntry, "file" | "mtimeM
           mdxToMarkdown(entry.body).catch(() => entry.body)
         : entry.format === "html"
           ? htmlToMarkdown(entry.body)
-          : Promise.resolve(entry.body);
+          : Promise.resolve(plainRunnableFences(entry.body));
     bodyCache.set(key, p);
     p.catch(() => bodyCache.delete(key));
     if (bodyCache.size > 500) bodyCache.delete(bodyCache.keys().next().value!);

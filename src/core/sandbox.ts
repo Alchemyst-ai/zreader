@@ -8,6 +8,45 @@ export type SandboxLanguage = "python" | "javascript" | "typescript";
 
 export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] = ["python", "javascript", "typescript"];
 
+/** Fence info words that name a Sandbox language (```` ```py run ````). */
+export const SANDBOX_LANGUAGE_ALIASES: Readonly<Record<string, SandboxLanguage>> = {
+  python: "python",
+  py: "python",
+  javascript: "javascript",
+  js: "javascript",
+  typescript: "typescript",
+  ts: "typescript",
+};
+
+/** The Sandbox language a fence's info word names, or `null`. */
+export function sandboxLanguage(info: string | null | undefined): SandboxLanguage | null {
+  return (info && SANDBOX_LANGUAGE_ALIASES[info.toLowerCase()]) || null;
+}
+
+/** Does a fence's meta (the info string after the language) mark RunnableCode? */
+export function isRunnableMeta(meta: string | null | undefined): boolean {
+  return !!meta && /(?:^|\s)run(?:\s|$)/.test(meta);
+}
+
+/** A `name=value` attribute from a fence's meta. */
+export function fenceAttr(meta: string | null | undefined, name: string): string | undefined {
+  return meta ? new RegExp(`(?:^|\\s)${name}=([^\\s]+)`).exec(meta)?.[1] : undefined;
+}
+
+/** RunnableCode ids: letters, digits, `-` and `_`. */
+export const RUNNABLE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** FNV-1a fingerprint of a piece of RunnableCode (trailing blank lines ignored). */
+export function codeFingerprint(language: string, code: string): string {
+  let h = 0x811c9dc5;
+  const s = `${language}\n${code.replace(/\s+$/, "")}`;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 /** Who wrote the RunnableCode: the reader (`scratchpad`) or the book's author (`chapter`). */
 export type CodeSource = "scratchpad" | "chapter";
 

@@ -14,6 +14,7 @@ import { rehypeBlocks, type BlocksData } from "../rehype/index";
 import { rehypeImages, type ImagePipelineOptions } from "./images";
 import { rehypeMath, rehypeMathDelimiters, resolveMath } from "./math";
 import type { MathOption } from "../config/index";
+import { rehypeRunnable } from "./runnable";
 import { sanitizeHtml } from "./sanitize";
 
 export type ChapterFormat = "md" | "mdx" | "html";
@@ -43,8 +44,8 @@ function remarkMathPlugins(opts: PipelineOptions): PluggableList {
   return resolveMath(opts.math) ? [remarkMath] : [];
 }
 
-function sanitizeFor(html: string, opts: PipelineOptions): string {
-  return sanitizeHtml(html, opts.sanitize, { mathMl: resolveMath(opts.math) != null });
+function sanitizeFor(html: string, opts: PipelineOptions, runnable = false): string {
+  return sanitizeHtml(html, opts.sanitize, { mathMl: resolveMath(opts.math) != null, runnable });
 }
 
 export interface HtmlResult extends BlocksData {
@@ -90,11 +91,12 @@ export async function renderMarkdown(markdown: string, opts: PipelineOptions = {
     .use(remarkMathPlugins(opts))
     .use(opts.remarkPlugins ?? [])
     .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRunnable)
     .use(rehypeRaw)
     .use(opts.rehypePlugins ?? [])
     .use(rehypeStringify)
     .process(markdown);
-  return annotate(sanitizeFor(String(file), opts), opts, false);
+  return annotate(sanitizeFor(String(file), opts, true), opts, false);
 }
 
 /**
@@ -106,7 +108,7 @@ export async function compileMdx(source: string, opts: PipelineOptions = {}): Pr
     outputFormat: "function-body",
     development: false,
     remarkPlugins: [remarkGfm, ...remarkMathPlugins(opts), ...(opts.remarkPlugins ?? [])],
-    rehypePlugins: [...(opts.rehypePlugins ?? []), ...mathPlugins(opts, false), ...imagePlugins(opts), rehypeBlocks],
+    rehypePlugins: [rehypeRunnable, ...(opts.rehypePlugins ?? []), ...mathPlugins(opts, false), ...imagePlugins(opts), rehypeBlocks],
   });
   return { kind: "mdx", code: String(file), ...(file.data as { reader: BlocksData }).reader };
 }

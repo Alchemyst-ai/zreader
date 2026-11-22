@@ -28,10 +28,18 @@ function hostAllowed(src: string, allow: string[]): boolean {
  * Image *policy* (remote hosts, data-URI sizes) is applied afterwards by
  * `rehypeImages`; here `srcset` candidates with script URLs are dropped.
  */
-export function sanitizeHtml(html: string, options: SanitizeOptions = {}, internal: { mathMl?: boolean } = {}): string {
+/** RunnableCode markers (`rehypeRunnable`), kept only on `pre` and only with valid values. */
+const RUNNABLE_ATTR = ["data-zr-runnable", "data-zr-runnable-id", "data-zr-output-for"];
+const RUNNABLE_VALUE: Record<string, RegExp> = {
+  "data-zr-runnable": /^(?:python|javascript|typescript)$/,
+  "data-zr-runnable-id": /^[A-Za-z0-9_-]{1,64}$/,
+  "data-zr-output-for": /^[A-Za-z0-9_-]{1,64}$/,
+};
+
+export function sanitizeHtml(html: string, options: SanitizeOptions = {}, internal: { mathMl?: boolean; runnable?: boolean } = {}): string {
   const allowIframes = options.allowIframes ?? [];
   const addTags = [...(options.allowTags ?? []), ...(allowIframes.length ? ["iframe"] : [])];
-  const addAttr = ["target", ...IMAGE_ATTR, ...(options.allowAttributes ?? []), ...(allowIframes.length ? ["allowfullscreen", "loading"] : [])];
+  const addAttr = ["target", ...(internal.runnable ? RUNNABLE_ATTR : []), ...IMAGE_ATTR, ...(options.allowAttributes ?? []), ...(allowIframes.length ? ["allowfullscreen", "loading"] : [])];
 
   const purify = DOMPurify;
   purify.addHook("uponSanitizeElement", (node, data) => {
@@ -46,7 +54,12 @@ export function sanitizeHtml(html: string, options: SanitizeOptions = {}, intern
       if (!hostAllowed(src, allowIframes)) el.parentNode?.removeChild(el);
     }
   });
-  purify.addHook("uponSanitizeAttribute", (_node, data) => {
+  purify.addHook("uponSanitizeAttribute", (node, data) => {
+    const rule = RUNNABLE_VALUE[data.attrName];
+    if (rule) {
+      if ((node as Element).tagName !== "PRE" || !rule.test(data.attrValue)) data.keepAttr = false;
+      return;
+    }
     if (data.attrName !== "srcset") return;
     const kept = parseSrcset(data.attrValue).filter((c) => !SCRIPT_URL.test(c.url));
     if (kept.length) data.attrValue = stringifySrcset(kept);

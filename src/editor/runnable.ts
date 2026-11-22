@@ -18,22 +18,13 @@
  */
 import { Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { base64ToBlob, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
+import { base64ToBlob, codeFingerprint, fenceAttr, isRunnableMeta, sandboxLanguage, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
 
 export const RUNNABLE_NODE = "runnableCode";
 
 /** Output longer than this is cut in the pad, with a marker. */
 export const OUTPUT_LIMIT = 8000;
 export const TRUNCATED_MARKER = "… [output truncated]";
-
-const LANGUAGE_ALIASES: Record<string, SandboxLanguage> = {
-  python: "python",
-  py: "python",
-  javascript: "javascript",
-  js: "javascript",
-  typescript: "typescript",
-  ts: "typescript",
-};
 
 export const LANGUAGE_LABELS: Record<SandboxLanguage, string> = { python: "Python", javascript: "JavaScript", typescript: "TypeScript" };
 
@@ -63,17 +54,7 @@ export interface RunnableAttrs {
 
 // ------------------------------------------------------------------ Markdown
 
-/** FNV-1a fingerprint of a piece of RunnableCode, used to tell when its Output is stale. */
-export function codeFingerprint(language: string, code: string): string {
-  let h = 0x811c9dc5;
-  // Trailing blank lines don't change what the code does.
-  const s = `${language}\n${code.replace(/\s+$/, "")}`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
-}
+export { codeFingerprint };
 
 export function newRunnableId(): string {
   return Math.random().toString(36).slice(2, 8).padEnd(6, "0");
@@ -123,15 +104,15 @@ function readFence(lines: string[], at: number): Fence | null {
   return null; // unclosed: leave it to the regular code block
 }
 
-const attr = (rest: string, name: string) => new RegExp(`(?:^|\\s)${name}=([^\\s]+)`).exec(rest)?.[1];
+const attr = (rest: string, name: string) => fenceAttr(rest, name);
 
 /** Tokenizes RunnableCode (and the Output fence right after it) at the start of `src`. */
 export function tokenizeRunnable(src: string): RunnableToken | undefined {
   const lines = src.split("\n");
   const code = readFence(lines, 0);
   if (!code) return undefined;
-  const language = LANGUAGE_ALIASES[code.info.toLowerCase()];
-  if (!language || !/(?:^|\s)run(?:\s|$)/.test(code.rest)) return undefined;
+  const language = sandboxLanguage(code.info);
+  if (!language || !isRunnableMeta(code.rest)) return undefined;
   const givenId = attr(code.rest, "id");
   const runnableId = givenId ?? newRunnableId();
   let used = code.lines;
