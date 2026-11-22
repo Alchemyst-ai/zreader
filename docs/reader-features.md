@@ -38,7 +38,7 @@ A WYSIWYG Markdown editor (Tiptap) with checklists (`- [ ]`).
 
 - Three scopes, switchable in the panel: **Chapter**, **Book** and **Global**. Configure which are offered with `scratchpad.scopes`, or turn it off with `scratchpad.enabled: false`.
 - **Math:** with [`<ScratchpadMath />`](./math.md#in-the-scratchpad), `$…$` and `$$…$$` render as formulas you can click to edit, and math quoted from a chapter arrives as TeX.
-- **Runnable code:** with a Sandbox ([`<ScratchpadSandbox />`](./sandbox.md)), readers insert Python, JavaScript or TypeScript, run it with Run or Shift+Enter, and keep its Output in the pad. Variables carry over between runs in the same pad.
+- **Runnable code:** with a Sandbox ([`<ScratchpadSandbox />`](./sandbox.md)), readers insert Python, JavaScript or TypeScript, run it with Run or Shift+Enter, and keep its Output in the pad. Variables carry over between runs in the same pad. Examples the author wrote in a chapter can be run, edited and copied into the pad too.
 - **Images:** paste, drop or insert (toolbar) images. They're stored in this browser and saved in the pad's Markdown as `![name](zr-blob:<id>)`. Base64 images pasted as HTML are moved to the same store, so the pad stays small.
 - **Quote to scratchpad** appends the passage (and its note) as a Markdown quote with a link back to the highlight.
 - Panel menu: **Download .md**, **Copy markdown**, **Clear** (with Undo).

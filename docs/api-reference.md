@@ -19,7 +19,8 @@ Browser. The reader UI. See [React](./react.md).
 - `BookContents` / `BookHome` (`BookContentsProps` / `BookHomeProps`)
 - `ContinueReading`, `ChapterList` (`BookNavProps`)
 - `Reader` (`ReaderProps`), `ReaderTitle`, `useReaderChapter()` (`ReaderChapterValue`)
-- `Callout` (`CalloutProps`), `ZImage` (`ZImageProps`), `BookCover`
+- `Callout` (`CalloutProps`), `RunnableCode` (`RunnableCodeProps`: `language`, `code`, `id?`, `output?`), `ZImage` (`ZImageProps`), `BookCover`
+- RunnableCode in chapters: `useChapterRunnables(root, { bookId, chapterId, contentKey?, copyToPad? })` (used by `Reader`), `enhanceChapterRunnables(root, { sandbox, kernel, copyToPad? })`, `chapterKernel(bookId, chapterId)` (`UseChapterRunnablesOptions`, `ChapterRunnableOptions`)
 - `SaveOffline`, `useOfflineBook(book)` (`OfflineStatus`)
 - `BlobImage` (`BlobImageProps`), `imageFiles(dataTransfer)`, `noteImages(note)`, `noteText(note)`
 - `ImageViewer` (`ImageViewerProps`), `useImageViewer(root, enabled?)`, `describeImage(img)`, `ZOOMABLE_SELECTOR` (`ViewerImage`)
@@ -112,6 +113,7 @@ Node. See [Content layer](./content.md).
 - `renderMarkdown(md, opts?)`, `renderHtml(html, opts?)`, `annotateHtml(html, opts?)`, `compileMdx(source, opts?)`, `runMdx(code)`, `sanitizeHtml(html, sanitize?)`
 - `htmlToReact(html, { components })`: compiled HTML as React elements
 - Images ([Images](./images.md)): `rehypeImages(opts?)`, `checkImageUrl(src, images?)`, `classifyImageUrl(src)`, `hostAllowed(host, list)`, `parseDataUri(src)`, `parseSrcset(value)`, `stringifySrcset(list)`, `measureFile(file)`, `probeRemoteImage(src, timeoutMs)`, `formatBytes(n)`
+- RunnableCode ([Runnable code](./sandbox.md#in-chapters)): `rehypeRunnable()`, the first rehype plugin when you compile MDX yourself
 - Math ([Math](./math.md)): `rehypeMath({ math })`, `rehypeMathDelimiters()`, `getMathRenderer(config)`, `resolveMath(option)`, `toMathElement(markup, tex, display)`, `MathEngineMissingError`, `MATH_PACKAGES` (`MathRenderer`, `RehypeMathOptions`)
 - Assets: `createAssetHandler({ shelves?, cacheControl? })`, `serveAsset(request, opts)`, `resolveBookAsset(src, ctx)`, `matchAssetRoute(pathname, basePath, route)`, `assetUrl(ctx, hash, path)`, `ASSET_TYPES`, `SVG_CSP`
 - `rehypeBlocks`, `hashString`, `glob`, `defineConfig`, `z`
@@ -228,7 +230,9 @@ The store's methods:
 **Sandbox protocol** (RunnableCode; see [Runnable code](./sandbox.md))
 
 - `SandboxClient` (`languages`, `run(request, { signal })`, `restart(kernel, language)`, `dispose()`), `SandboxLoader` (`languages`, `load(settings)`), `SandboxSettings`, `DangerousPermissions`
-- `RunRequest`, `RunEvent` (`stdout`, `stderr`, `result`, `display`, `error`, `restarted`, `status`, `exit`), `SandboxLanguage`, `CodeSource`, `SANDBOX_LANGUAGES`
+- `RunRequest`, `RunEvent` (`stdout`, `stderr`, `result`, `display`, `error`, `restarted`, `status`, `started`, `exit`), `SandboxLanguage`, `CodeSource`, `SANDBOX_LANGUAGES`
+- Fences: `sandboxLanguage(info)`, `isRunnableMeta(meta)`, `fenceAttr(meta, name)`, `outputPairs(id, outputMeta)`, `codeFingerprint(language, code)`, `RUNNABLE_ID`, `SANDBOX_LANGUAGE_ALIASES`
+- Output: `outputText(events)`, `truncateOutput(text)`, `renderRunnableMarkdown(attrs, code)`, `newRunnableId()`, `isRaster(mime)`, `OUTPUT_LIMIT`, `TRUNCATED_MARKER`, `LANGUAGE_LABELS`, `RESTART_NOTICE`
 - `connectSandbox(loader, settings)` (`SandboxConnection`), `TAB_ID`
 
 **Backup**

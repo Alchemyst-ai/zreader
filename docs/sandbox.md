@@ -2,11 +2,13 @@
 
 Readers can add **RunnableCode** to any scratchpad: Python, JavaScript or TypeScript that they run in place, with the **Output** of the last run shown under it and saved in the pad. Variables carry over between runs in the same pad, like a notebook.
 
+Authors can put RunnableCode in chapters too, with the same syntax. Readers run it where they read it, edit it to try their own changes, and copy it into their scratchpad to keep (see [In chapters](#in-chapters)).
+
 Code runs in the reader's own browser, so no server is needed. It can't read the page, the reader's other notes or highlights, or reach the internet, unless you grant it in `reader.config.ts`.
 
-RunnableCode is off until you turn it on. Without it, pads that contain RunnableCode show it as plain code blocks.
+RunnableCode is off until you turn it on. Without it, pads and chapters that contain RunnableCode show it as plain code blocks.
 
-> The original idea was code that runs only "if the instance is connected to the backend". The browser Sandbox replaces that as the default ([ADR 0001](./adr/0001-browser-sandbox-by-default.md)). A server Sandbox that takes over where you enable it is planned, along with RunnableCode in chapters.
+> The original idea was code that runs only "if the instance is connected to the backend". The browser Sandbox replaces that as the default ([ADR 0001](./adr/0001-browser-sandbox-by-default.md)). A server Sandbox that takes over where you enable it is planned ([#16](https://github.com/Alchemyst-ai/zreader/issues/16)).
 
 ## Turn it on
 
@@ -93,6 +95,45 @@ total + 1
 - When the code changes after a run, its Output is dimmed and marked as from an older version of the code.
 - Exported pads read as ordinary Markdown. Where there's no Sandbox, both fences show as code blocks and are kept unchanged.
 
+## In chapters
+
+Write RunnableCode in a Markdown or MDX chapter exactly as in a pad. An `output` fence right after it is the Output readers see before they run anything:
+
+````md
+```python run id=squares
+squares = [n * n for n in range(1, 6)]
+squares
+```
+```output for=squares
+[1, 4, 9, 16, 25]
+```
+````
+
+The `id` pairs the code with its Output. Without one, the Output fence must come straight after the code and name no id, and zreader derives an id from the code.
+
+In MDX you can also use the component, which takes the code as a prop:
+
+```mdx
+<RunnableCode language="python" id="total" code={"sum(squares)"} output="55" />
+```
+
+`RunnableCode` is in Next's default MDX components (`mdxComponents` from `zreader/next/server`). Elsewhere, import it from `zreader/react` and pass it in your MDX `components`. HTML chapters don't get RunnableCode: the markers are removed when HTML is sanitized.
+
+What readers get:
+
+- **Nothing runs on its own.** The page shows the author's code and Output as ordinary code blocks, and a bar with **Run**, **Edit**, **Copy to pad** and **Restart**.
+- **Examples on one page share a Kernel** per language, so later examples can use what earlier ones defined. That Kernel is separate from the reader's pads, and it ends when the reader leaves the page.
+- **Edit** opens the code in an editor; Shift+Enter runs it and **Reset** brings back the author's version. Edits and the reader's Output last as long as the page.
+- **Copy to pad** appends the code, with the Output of that exact code, to the chapter's scratchpad, where it's saved like any RunnableCode.
+- The author's code keeps its block id, so highlights and bookmarks work on it. While the reader edits it, the author's code (and any highlights on it) is hidden until Reset.
+- A language the Sandbox doesn't run stays a plain code block.
+
+Under Next.js and with the content layer this works with no setup beyond the Sandbox. If you compile MDX yourself (Vite's `@mdx-js/rollup`, for example), add `rehypeRunnable` from `zreader/content` as the **first** rehype plugin, so it sees the fences' info strings. A rehype plugin that rebuilds `pre` elements (a syntax highlighter) after it drops the markers.
+
+The `.md` twins agents read show RunnableCode as plain fences (` ```python `, then ` ```text ` for the Output).
+
+> Chapter code currently runs with the **scratchpad's** Dangerous permissions. Per-chapter rules, so only the chapters you choose get network access or pinned packages, are next ([#19](https://github.com/Alchemyst-ai/zreader/issues/19)). Until then, leave `permissions.scratchpad` empty on shelves whose authors you don't trust.
+
 ## Configuration
 
 `reader.sandbox` in `reader.config.ts`, set for the whole site and overridden per shelf through the shelf's `reader`. These settings only limit RunnableCode; they can't turn it on.
@@ -100,6 +141,7 @@ total + 1
 | Option | Type | Default | |
 | --- | --- | --- | --- |
 | `sandbox.scopes.global` / `.book` / `.chapter` | `"browser"` or `false` | `"browser"` | Where RunnableCode in that kind of pad runs. `false` shows it as plain code and hides the toolbar button |
+| `sandbox.chapters` | `"browser"` or `false` | `"browser"` | Where RunnableCode the author wrote in chapters runs. `false` shows it as plain code. Not the same as `scopes.chapter`, which is the reader's chapter pad |
 | `sandbox.kernel.idleTimeoutMs` | number or `false` | 15 minutes | Shut down a Kernel with no run for this long. `0` or `false`: never |
 | `sandbox.kernel.runTimeoutMs` | number ≥ 100 or `false` | 30 seconds | Stop a run that takes longer. Counted from when the code starts, not while the runtime downloads |
 | `sandbox.permissions.scratchpad.dangerousPermissions` | object | `{}` | See below |

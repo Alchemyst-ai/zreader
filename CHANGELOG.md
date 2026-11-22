@@ -1,19 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 **Runnable code.** Readers can add RunnableCode to any scratchpad: Python, JavaScript or TypeScript they run in place, with the Output of the last run saved in the pad. See [Runnable code](./docs/sandbox.md) ([#2](https://github.com/Alchemyst-ai/zreader/issues/2)).
 
 - **Turn it on** with `<ScratchpadSandbox />` from the new `zreader/sandbox/browser` entry, or `<ReaderProvider sandbox={browserSandbox()}>`. Without a Sandbox, RunnableCode shows as plain code blocks.
 - **Runs in the reader's browser:** Kernels are workers in a hidden opaque-origin iframe that can't read the page or the reader's data, and can't reach the network. Python uses Pyodide, loaded from jsDelivr on first use or self-hosted with `pyodideIndexURL`. JavaScript keeps top-level declarations between runs, shows the last expression and supports top-level `await`. TypeScript needs `sucrase` (a new optional peer dependency) and `typescript={() => import("sucrase")}`.
 - **Notebook-style:** variables carry over in a pad, Shift+Enter runs, Stop restarts the Kernel, matplotlib figures and `display(canvas)` show images (kept with reader images), and an Output is marked when the code changes.
+- **In chapters:** authors write the same fences in Markdown and MDX (or `<RunnableCode language code id output>` in MDX). Readers run them on the page, edit them (Reset restores the author's code), and Copy to pad. Examples on a page share a Kernel per language, apart from pads, ended when the reader leaves. `.md` twins show plain fences. Turn it off with `reader.sandbox.chapters: false`. `rehypeRunnable` (from `zreader/content`) goes first in your rehype plugins when you compile MDX yourself. Until per-chapter rules land, chapter code runs with the scratchpad's Dangerous permissions.
 - **Stored as Markdown:** a ```` ```python run id=… ```` fence, an ```` ```output for=… ```` fence and `![output](zr-blob:…)` images. Exported pads read as ordinary Markdown.
 - **New `reader.sandbox` options:** `scopes` per pad kind, `kernel.idleTimeoutMs` (15 minutes) and `kernel.runTimeoutMs` (30 seconds), and `permissions.scratchpad.dangerousPermissions` (`network` origins, Python `packages`), all off by default and settable per shelf.
 - **New dependency:** `acorn`, loaded only when JavaScript first runs.
 - **Scratchpad internals:** optional features (math, RunnableCode) are registered in one list that decides the editor's extensions, its toolbar and whether a pad's cached JSON can be reused.
 - **Docs:** a [glossary](./GLOSSARY.md) of domain terms and [architecture decision records](./docs/adr/).
-
-## 0.4.0
 
 **Images.** Chapters can show images from files next to the chapter, URLs and base64 data URIs, in `.md`, `.mdx` and `.html`. See [Images](./docs/images.md).
 
@@ -50,11 +49,11 @@ See also the [production checklist](./docs/production-checklist.md).
 | Compiled-chapter cache version bumped | Chapters recompile once |
 | `annotateHtml(html, opts?)` also runs `rehypeImages` | Pass `{ images: false }` to skip it |
 | MDX `.md` twins parse `$…$` as math, so braces between dollar signs are kept, not removed | None |
-| `ReaderClientOptions` gains `userImages` and `offline` | Only affects code that builds the object by hand; `mergeOptions` and `resolveConfig` fill the defaults |
+| `ReaderClientOptions` gains `userImages`, `offline` and `sandbox` | Only affects code that builds the object by hand; `mergeOptions` and `resolveConfig` fill the defaults |
 | `BACKUP_VERSION` is `2` | v1 backups still import |
 | `SelectionState.text` (from `useChapterEngine`) writes formulas as `$TeX$` | Use `index.text.slice(start, end)` for the rendered characters |
 
-New dependencies: `image-size`, `remark-math`, `hast-util-to-jsx-runtime`, `unist-util-visit-parents`, `marked` (the same major as `@tiptap/markdown` uses). New optional peers: `katex`, `temml` and `@mathjax/src`.
+New dependencies: `image-size`, `remark-math`, `hast-util-to-jsx-runtime`, `unist-util-visit-parents`, `marked` (the same major as `@tiptap/markdown` uses), `acorn`. New optional peers: `katex`, `temml`, `@mathjax/src` and `sucrase`.
 
 ## 0.3.0
 

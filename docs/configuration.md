@@ -232,6 +232,7 @@ Any object with a zod-style `safeParse` works. Custom fields end up in `chapter.
 | `progress.saveIntervalMs` | number ≥ 100 | `1000` | How often reading position is saved |
 | `backupReminder` | boolean | `true` | Remind readers that their notes live only in this browser |
 | `sandbox.scopes.global` / `.book` / `.chapter` | `"browser"` or `false` | `"browser"` | Where RunnableCode in that kind of pad runs; `false` shows it as plain code (see [Runnable code](./sandbox.md)) |
+| `sandbox.chapters` | `"browser"` or `false` | `"browser"` | Where RunnableCode the author wrote in chapters runs; `false` shows it as plain code. Unrelated to `scopes.chapter` (the reader's chapter pad) |
 | `sandbox.kernel.idleTimeoutMs` | number or `false` | 15 minutes | Shut down a Kernel with no run for this long; `0` or `false`: never |
 | `sandbox.kernel.runTimeoutMs` | number ≥ 100 or `false` | 30 seconds | Stop a run that takes longer |
 | `sandbox.permissions.scratchpad.dangerousPermissions` | `{ network?: string[] \| true; packages?: string[] }` | `{}` | Network origins and Python packages readers' code may use. Off by default |

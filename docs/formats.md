@@ -29,7 +29,7 @@ A chapter is shown in two places: the **reader page**, which renders the chapter
 
 ## MDX (`.mdx`) through the content layer
 
-**Reader page:** compiled with `@mdx-js/mdx` at build time and run on the server. Components come from `mdxComponents` (`{ Callout }`) plus the `components` you pass to `ReaderChapter`. MDX is code: it is not sanitized, so `<iframe>`, `<video>` or any component renders as written.
+**Reader page:** compiled with `@mdx-js/mdx` at build time and run on the server. Components come from `mdxComponents` (`{ Callout, RunnableCode }`) plus the `components` you pass to `ReaderChapter`. MDX is code: it is not sanitized, so `<iframe>`, `<video>` or any component renders as written.
 
 **`.md` twin:** the source is parsed as MDX and every MDX-only construct is replaced with its Markdown equivalent, or removed:
 

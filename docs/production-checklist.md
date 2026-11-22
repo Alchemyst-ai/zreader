@@ -43,7 +43,9 @@ Go through this before you ship a zreader site, and again when you upgrade to 0.
 
 ## Runnable code (if enabled)
 
-- [ ] **Decide where it runs.** Turn off pads that shouldn't have it with `reader.sandbox.scopes`, per site or per shelf. See [Runnable code](./sandbox.md).
+- [ ] **Decide where it runs.** Turn off pads that shouldn't have it with `reader.sandbox.scopes`, and chapter code with `reader.sandbox.chapters`, per site or per shelf. See [Runnable code](./sandbox.md).
+- [ ] **Chapter code shares the scratchpad's permissions** until per-chapter rules land. Don't grant `permissions.scratchpad` on shelves whose authors you don't trust.
+- [ ] **If you compile MDX yourself,** put `rehypeRunnable` first in your rehype plugins, and check a runnable chapter after adding a syntax highlighter.
 - [ ] **Know the third-party request.** The first Python run downloads Pyodide (about 10 MB) from `cdn.jsdelivr.net`. To avoid that, self-host it and set `pyodideIndexURL` (served with CORS allowed).
 - [ ] **Grant only what books need.** `dangerousPermissions.network` and `packages` are off by default; list exact origins and package names rather than `network: true`.
 - [ ] **If you send a Content-Security-Policy,** the Sandbox frame inherits it: allow an inline script, `blob:` workers, `'unsafe-eval'`, `'wasm-unsafe-eval'` and the Pyodide origin, then run Python and JavaScript once.
@@ -67,3 +69,4 @@ The automated tests use simulated browser APIs for these, so check them by hand 
 - [ ] Formula size in the scratchpad, in the desktop panel and the mobile drawer: an inline `$\frac{1}{n^2}$` should read at the size of the surrounding text. Adjust with `--zr-math-scale` on `.zr-editor` if your pad font differs a lot.
 - [ ] Formulas in the scratchpad: typing `$…$` and `$$ `, the Σ button, click to edit, Escape to cancel.
 - [ ] RunnableCode, if enabled: Run and Shift+Enter, Stop on an endless loop, a matplotlib plot, and a pad reloaded with its Output, in the desktop panel and the mobile drawer.
+- [ ] RunnableCode in a chapter: Run, Edit then Reset, Copy to pad, and a highlight on the code before and after editing.
