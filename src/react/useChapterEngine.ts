@@ -142,7 +142,10 @@ export function useChapterEngine(opts: ChapterEngineOptions) {
     };
     rebuild();
     let t: ReturnType<typeof setTimeout> | undefined;
-    const mo = new MutationObserver(() => {
+    const mo = new MutationObserver((records) => {
+      // Changes inside ignored elements (RunnableCode controls and Output) never change the index.
+      const ignored = (n: Node) => (n.nodeType === 1 ? (n as Element) : n.parentElement)?.closest(`[${IGNORE_ATTR}]`);
+      if (records.every((r) => ignored(r.target) || [...r.addedNodes, ...r.removedNodes].every((n) => n.nodeType === 1 && (n as Element).hasAttribute(IGNORE_ATTR)))) return;
       clearTimeout(t);
       t = setTimeout(rebuild, 60);
     });

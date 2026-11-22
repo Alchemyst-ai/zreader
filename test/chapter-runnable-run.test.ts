@@ -125,18 +125,44 @@ describe("RunnableCode in chapters: running", () => {
     const copied: string[] = [];
     enhanceChapterRunnables(root, { sandbox, kernel: "k", copyToPad: (md) => copied.push(md) });
     const [a, b] = hosts(root);
-    press(a!, "Copy to scratchpad");
+    press(a!, "Copy to pad");
     expect(copied[0]).toMatch(/^```python run id=(\w+)\nx = 41\n```\n```output for=\1\n\(nothing\)\n```$/);
     press(b!, "Run");
     await settle();
-    press(b!, "Copy to scratchpad");
+    press(b!, "Copy to pad");
     expect(copied[1]).toMatch(/^```python run id=(\w+)\nx\n```\n```output for=\1\nran x\n```$/);
+  });
+
+  it("copies an Output only with the code that produced it", async () => {
+    const { sandbox } = fakeSandbox();
+    const root = page();
+    const copied: string[] = [];
+    enhanceChapterRunnables(root, { sandbox, kernel: "k", copyToPad: (md) => copied.push(md) });
+    const a = hosts(root)[0]!;
+    press(a, "Edit code");
+    const editor = a.querySelector("textarea")!;
+    editor.value = "x = 2";
+    press(a, "Copy to pad"); // edited, never run: no Output (not the author's)
+    expect(copied[0]).not.toContain("output");
+    press(a, "Run");
+    await settle();
+    press(a, "Reset to the author's code");
+    press(a, "Copy to pad"); // the author's code again: the author's Output, not the edited run's
+    expect(copied[1]).toContain("(nothing)");
+  });
+
+  it("gives each visit of a page its own Kernels, apart from pads", () => {
+    const one = chapterKernel("guide", "intro");
+    const two = chapterKernel("guide", "intro");
+    expect(one).toMatch(/^page:guide:intro#.+~\d+$/);
+    expect(one).not.toBe(two);
+    expect(one.startsWith("pad:")).toBe(false);
   });
 
   it("has no Copy to scratchpad without a pad to copy to", () => {
     const root = page();
     enhanceChapterRunnables(root, { sandbox: fakeSandbox().sandbox, kernel: "k" });
-    expect(hosts(root)[0]!.querySelector('button[aria-label="Copy to scratchpad"]')).toBeNull();
+    expect(hosts(root)[0]!.querySelector('button[aria-label="Copy to pad"]')).toBeNull();
   });
 
   it("cleans up on leaving the page: controls gone, author code and Output back, Kernels ended", async () => {

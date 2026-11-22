@@ -242,6 +242,8 @@ graph LR
     node -- "display images" --> blobs2["BlobStore"]
 ```
 
+**In chapters**, `useChapterRunnables` (used by `<Reader>`) finds `pre[data-zr-runnable]` from the content pipeline and adds one `data-zr-ignore` element after each: controls, a textarea editor and the reader's Output. The author's code and Output stay in the page, so block ids and highlights are untouched; editing hides the author's `pre` until Reset, and the chapter engine ignores mutations inside ignored elements. Runs use codeSource `chapter` in a Kernel per page visit, ended when the reader leaves.
+
 The page side owns everything with state (the run queue per Kernel, the run timeout, idle shutdown), so the frame only starts, stops and relays workers. Its code and the Kernels are self-contained functions turned into source with `toString()`, so nothing is fetched to start them.
 
 ## Source layout

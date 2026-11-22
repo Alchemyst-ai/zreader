@@ -18,6 +18,7 @@ import {
   newRunnableId,
   outputText,
   renderRunnableMarkdown,
+  codeFingerprint,
   sandboxLanguage,
   truncateOutput,
   type RunEvent,
@@ -34,9 +35,14 @@ export interface ChapterRunnableOptions {
   copyToPad?: (markdown: string) => void;
 }
 
-/** One Kernel per chapter page and tab, apart from every pad's. */
+let visits = 0;
+
+/**
+ * One Kernel per chapter page and tab, apart from every pad's. Each visit of the
+ * page gets its own, so ending the last visit's Kernels can't hit the new ones.
+ */
 export function chapterKernel(bookId: string, chapterId: string): string {
-  return `page:${encodeURIComponent(bookId)}:${encodeURIComponent(chapterId)}#${TAB_ID}`;
+  return `page:${encodeURIComponent(bookId)}:${encodeURIComponent(chapterId)}#${TAB_ID}~${++visits}`;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: (Node | string)[]) {
@@ -71,7 +77,8 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
 
   let running: { abort: AbortController; started: boolean; cancelled: boolean } | null = null;
   let editing = false;
-  let lastOutput: string | null = null;
+  /** The last run's Output, with the code it came from: copied only together. */
+  let lastOutput: { text: string; ranFor: string } | null = null;
   let urls: string[] = [];
 
   const status = el("span", { className: "zr-chapter-runnable-status", role: "status" });
@@ -80,7 +87,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
   const restart = button("Restart Kernel", "Restart", "Restart the Kernel (clears variables)");
   const edit = button("Edit code", "Edit");
   const reset = button("Reset to the author's code", "Reset");
-  const copy = opts.copyToPad ? button("Copy to scratchpad", "Copy to pad") : null;
+  const copy = opts.copyToPad ? button("Copy to pad", "Copy to pad", "Copy the code and its Output to this chapter's scratchpad") : null;
   const bar = el(
     "div",
     { className: "zr-chapter-runnable-bar" },
@@ -109,6 +116,9 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
 
   const code = () => (editing ? editor.value : author);
   const controls = () => {
+    // Keep keyboard focus when the button that has it is about to hide.
+    const focused = document.activeElement;
+    const moveTo = focused === run && running ? stop : focused === stop && !running ? run : null;
     host.dataset.state = running ? "running" : "idle";
     host.dataset.edited = editing && editor.value !== author ? "true" : "false";
     run.hidden = !!running;
@@ -117,6 +127,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
     edit.hidden = editing;
     reset.hidden = !editing;
     editor.disabled = !!running;
+    moveTo?.focus();
   };
   const freeImages = () => {
     for (const u of urls) URL.revokeObjectURL(u);
@@ -145,6 +156,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
     if (running) return;
     const self = { abort: new AbortController(), started: false, cancelled: false };
     running = self;
+    const source = code();
     used.add(language);
     const events: RunEvent[] = [];
     const t0 = performance.now();
@@ -157,7 +169,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
     show(events);
     try {
       const client = await opts.sandbox.client();
-      const stream = client.run({ kernel: opts.kernel, runnableId: id, language, code: code(), codeSource: "chapter" }, { signal: self.abort.signal });
+      const stream = client.run({ kernel: opts.kernel, runnableId: id, language, code: source, codeSource: "chapter" }, { signal: self.abort.signal });
       for await (const e of stream) {
         if (self.abort.signal.aborted) break;
         if (e.type === "status") status.textContent = e.text;
@@ -182,7 +194,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
       show(events, "Stopped before it ran.");
       return controls();
     }
-    lastOutput = truncateOutput(outputText(events));
+    lastOutput = { text: truncateOutput(outputText(events)), ranFor: codeFingerprint(language, source) };
     show(events, restarted ? (RESTART_NOTICE[restarted] ?? RESTART_NOTICE.stopped!) : "");
     status.textContent = restarted ? "" : `${ok ? "Done" : "Failed"} in ${Math.round(performance.now() - t0)} ms`;
     controls();
@@ -220,7 +232,11 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
     controls();
   };
   const onCopy = () => {
-    opts.copyToPad?.(renderRunnableMarkdown({ language, runnableId: newRunnableId(), output: lastOutput ?? authorOutText }, code()));
+    const current = code();
+    const fp = codeFingerprint(language, current);
+    // An Output goes with the code that produced it, or none at all.
+    const output = lastOutput?.ranFor === fp ? lastOutput.text : fp === codeFingerprint(language, author) ? authorOutText : null;
+    opts.copyToPad?.(renderRunnableMarkdown({ language, runnableId: newRunnableId(), output: output || null }, current));
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Enter" && e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
@@ -236,7 +252,7 @@ function enhance(pre: HTMLElement, language: SandboxLanguage, opts: ChapterRunna
   reset.addEventListener("click", onReset);
   copy?.addEventListener("click", onCopy);
   editor.addEventListener("input", controls);
-  host.addEventListener("keydown", onKey);
+  editor.addEventListener("keydown", onKey);
   controls();
 
   return () => {
