@@ -1,6 +1,6 @@
 /** The scratchpad's optional features, in toolbar order. RunnableCode joins this list. */
 import { SigmaIcon, SquareTerminalIcon } from "lucide-react";
-import { TAB_ID, padKeySuffix, type MathLoader, type PadScope, type SandboxConnection, type SandboxOptions } from "zreader";
+import { TAB_ID, padKeySuffix, type MathLoader, type PadScope, type SandboxConnection, type SandboxOptions, type BlobStore } from "zreader";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PadFeature } from "./features";
@@ -13,6 +13,9 @@ export interface PadFeatureContext {
   sandbox: SandboxConnection | null;
   /** Where RunnableCode in each kind of pad runs (`reader.sandbox.scopes`). */
   sandboxScopes: SandboxOptions["scopes"];
+  /** Keeps an image a run displayed (the reader-images store). */
+  addImage?: (image: Blob) => Promise<string>;
+  blobs?: BlobStore;
   /** The pad being edited: RunnableCode gets one Kernel per pad (and language) in this tab. */
   scope: PadScope;
 }
@@ -51,7 +54,7 @@ const runnable: PadFeature<PadFeatureContext> = {
   name: "runnable",
   nodeTypes: [RUNNABLE_NODE],
   markdownHas: markdownHasRunnable,
-  activate: ({ sandbox, sandboxScopes, scope }) =>
+  activate: ({ sandbox, sandboxScopes, scope, addImage, blobs }) =>
     !sandbox || sandboxScopes[scope.kind] !== "browser"
       ? null
       : {
@@ -61,6 +64,8 @@ const runnable: PadFeature<PadFeatureContext> = {
           client: () => sandbox.client(),
           kernel: `${padKeySuffix(scope)}#${TAB_ID}`,
           codeSource: "scratchpad",
+          addImage,
+          blobs,
         }),
       ],
       toolbar: (editor) => (

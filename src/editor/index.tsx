@@ -305,9 +305,9 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
   const sandboxScopes = options.sandbox.scopes;
   const scopesKey = JSON.stringify(sandboxScopes);
   const features = useMemo(
-    () => resolvePadFeatures({ mathLoader, sandbox, sandboxScopes, scope }, PAD_FEATURES),
+    () => resolvePadFeatures({ mathLoader, sandbox, sandboxScopes, scope, addImage: (image) => addRef.current(image), blobs }, PAD_FEATURES),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mathLoader, sandbox, scopeId, scopesKey],
+    [mathLoader, sandbox, scopeId, scopesKey, blobs],
   );
   const initial = features.contentFor(pad);
   const editor = useEditor({

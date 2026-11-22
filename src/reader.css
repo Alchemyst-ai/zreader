@@ -305,6 +305,20 @@
 .zr-editor .zr-runnable-output-text:empty {
   display: none;
 }
+.zr-editor .zr-runnable-displays:empty {
+  display: none;
+}
+.zr-editor img.zr-runnable-display {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 0.375rem;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+.zr-editor img.zr-runnable-display[data-state="missing"] {
+  display: none;
+}
 .zr-editor .zr-runnable-stderr {
   color: var(--zr-destructive, #b91c1c);
 }

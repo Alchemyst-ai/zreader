@@ -8,14 +8,17 @@
  *   ```output for=k3x9
  *   42
  *   ```
+ *   ![output](zr-blob:9f2c…)
  *
+ * Images a run displays (plots) are kept in the BlobStore and listed after the
+ * Output fence, so records never hold binary data.
  * The Output fence holds only what the last run printed (ADR 0002): no status
  * or timing, so running unchanged code does not rewrite the pad. Without a
  * Sandbox the extension is off and both fences read as plain code blocks.
  */
 import { Node as TiptapNode, mergeAttributes, type Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { SANDBOX_LANGUAGES, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
+import { SANDBOX_LANGUAGES, base64ToBlob, parseBlobUrl, type BlobStore, type CodeSource, type RunEvent, type SandboxClient, type SandboxLanguage } from "zreader";
 
 export const RUNNABLE_NODE = "runnableCode";
 
@@ -41,6 +44,10 @@ export interface RunnableHost {
   /** The Kernel identity for this pad in this tab. */
   kernel: string;
   codeSource: CodeSource;
+  /** Stores an image a run displayed and returns its `zr-blob:` src. Without it, images show but aren't kept. */
+  addImage?(image: Blob): Promise<string>;
+  /** Resolves kept images for display. */
+  blobs?: BlobStore;
 }
 
 export interface RunnableAttrs {
@@ -50,6 +57,8 @@ export interface RunnableAttrs {
   output: string | null;
   /** Fingerprint of the language and code that produced `output` (cached JSON only). */
   outputFor: string | null;
+  /** Images the last run displayed, as `zr-blob:` srcs. */
+  displays: string[];
 }
 
 // ------------------------------------------------------------------ Markdown
@@ -83,7 +92,10 @@ export interface RunnableToken {
   runnableId: string;
   code: string;
   output: string | null;
+  displays: string[];
 }
+
+const DISPLAY_LINE = /^!\[output\]\((zr-blob:[a-z0-9_-]+)\)[ \t]*$/i;
 
 const OPEN = /^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`]+)([^\n`]*)$/;
 
@@ -128,8 +140,17 @@ export function tokenizeRunnable(src: string): RunnableToken | undefined {
     output = out.body;
     used += blank + out.lines;
   }
+  const displays: string[] = [];
+  for (;;) {
+    blank = 0;
+    while (used + blank < lines.length && lines[used + blank]!.trim() === "" && blank < 1) blank++;
+    const m = DISPLAY_LINE.exec(lines[used + blank] ?? "");
+    if (!m) break;
+    displays.push(m[1]!);
+    used += blank + 1;
+  }
   const raw = lines.slice(0, used).join("\n") + (used < lines.length ? "\n" : "");
-  return { type: RUNNABLE_NODE, raw, language, runnableId, code: code.body, output };
+  return { type: RUNNABLE_NODE, raw, language, runnableId, code: code.body, output, displays };
 }
 
 /** A backtick fence longer than any run of backticks in `text`. */
@@ -138,13 +159,14 @@ function fenceFor(text: string): string {
   return "`".repeat(Math.max(3, longest + 1));
 }
 
-export function renderRunnableMarkdown(attrs: Pick<RunnableAttrs, "language" | "runnableId" | "output">, code: string): string {
+export function renderRunnableMarkdown(attrs: Pick<RunnableAttrs, "language" | "runnableId" | "output"> & { displays?: string[] | null }, code: string): string {
   const f = fenceFor(code);
   const parts = [`${f}${attrs.language} run id=${attrs.runnableId}`, ...(code ? [code] : []), f];
   if (attrs.output) {
     const o = fenceFor(attrs.output);
     parts.push(`${o}output for=${attrs.runnableId}`, attrs.output, o);
   }
+  for (const src of attrs.displays ?? []) parts.push(`![output](${src})`);
   return parts.join("\n");
 }
 
@@ -205,7 +227,34 @@ function nodeView(host: RunnableHost) {
     const pre = el("pre", { className: "zr-runnable-code", spellcheck: false }, code);
     const outputText_ = el("pre", { className: "zr-runnable-output-text" });
     const noticeEl = el("p", { className: "zr-runnable-notice" });
-    const output = el("div", { className: "zr-runnable-output", contentEditable: "false", "aria-live": "polite", "aria-label": "Output" }, outputText_, noticeEl);
+    const images = el("div", { className: "zr-runnable-displays" });
+    const output = el("div", { className: "zr-runnable-output", contentEditable: "false", "aria-live": "polite", "aria-label": "Output" }, outputText_, images, noticeEl);
+    /** Object URLs in the Output pane: kept images (released to the BlobStore) or live ones (revoked). */
+    let shownImages: Array<{ src: string; url?: string; live: boolean }> = [];
+    const showImages = (list: Array<{ src: string; live?: Blob }>) => {
+      const key = list.map((i) => i.src).join(" ");
+      if (key === shownImages.map((i) => i.src).join(" ")) return;
+      for (const i of shownImages) {
+        if (i.live && i.url) URL.revokeObjectURL(i.url);
+        else if (!i.live) {
+          const id = parseBlobUrl(i.src);
+          if (id) host.blobs?.release(id);
+        }
+      }
+      images.replaceChildren();
+      shownImages = list.map(({ src, live }) => {
+        const img = el("img", { className: "zr-runnable-display", alt: "Output image" });
+        images.append(img);
+        if (live) {
+          const url = URL.createObjectURL(live);
+          img.src = url;
+          return { src, url, live: true };
+        }
+        const id = parseBlobUrl(src);
+        if (id && host.blobs) void host.blobs.url(id).then((u) => (u ? (img.src = u) : (img.dataset.state = "missing")));
+        return { src, live: false };
+      });
+    };
     const dom = el("div", { className: "zr-runnable", "data-runnable": "" }, bar, pre, output);
 
     const fingerprint = () => codeFingerprint(attrs().language, node.textContent);
@@ -224,8 +273,14 @@ function nodeView(host: RunnableHost) {
       } else if (attrs().output) {
         outputText_.textContent = attrs().output;
       }
+      const liveImages = (events: readonly RunEvent[]) =>
+        events.flatMap((e, i) => (e.type === "display" && e.mime.startsWith("image/") ? [{ src: `live:${i}:${e.data.length}`, live: base64ToBlob(e.data, e.mime) }] : []));
+      const kept = attrs().displays ?? [];
+      if (running) showImages(liveImages(running.events));
+      else if (kept.length) showImages(kept.map((src) => ({ src })));
+      else showImages(live ? liveImages(live) : []);
       noticeEl.textContent = notice;
-      const empty = !outputText_.textContent && !notice;
+      const empty = !outputText_.textContent && !notice && !shownImages.length;
       output.hidden = empty;
       dom.dataset.stale = !running && attrs().output != null && attrs().outputFor !== fingerprint() ? "true" : "false";
     };
@@ -242,14 +297,16 @@ function nodeView(host: RunnableHost) {
       if (!running) status.textContent = supported() ? (dom.dataset.stale === "true" ? "Output is from an older version of this code" : "") : `${LANGUAGE_LABELS[attrs().language]} isn't available here`;
     };
 
-    const save = (text: string, ranFor: string) => {
+    const save = (text: string, ranFor: string, displays: string[]) => {
       const pos = getPos();
       if (typeof pos !== "number" || editor.isDestroyed) return;
       const current = editor.state.doc.nodeAt(pos);
       if (!current || current.type.name !== RUNNABLE_NODE) return;
-      const next = { output: text ? truncateOutput(text) : null, outputFor: text ? ranFor : null };
+      const has = !!text || displays.length > 0;
+      const next = { output: text ? truncateOutput(text) : null, outputFor: has ? ranFor : null, displays };
       // Same Output from the same code: leave the pad untouched.
-      if (current.attrs.output === next.output && current.attrs.outputFor === next.outputFor) return;
+      const same = (a: string[] = [], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+      if (current.attrs.output === next.output && current.attrs.outputFor === next.outputFor && same(current.attrs.displays, displays)) return;
       editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, ...next }).setMeta("addToHistory", false));
     };
 
@@ -289,8 +346,22 @@ function nodeView(host: RunnableHost) {
       }
       if (abort.signal.aborted) return;
       notice = restarted ? (RESTART_NOTICE[restarted] ?? RESTART_NOTICE.stopped!) : "";
+      // Keep displayed images in the BlobStore; the pad refers to them by id.
+      const displays: string[] = [];
+      for (const e of events) {
+        if (e.type !== "display" || !e.mime.startsWith("image/")) continue;
+        if (!host.addImage) {
+          notice = [notice, "Images from this run aren't kept in the pad."].filter(Boolean).join(" ");
+          break;
+        }
+        try {
+          displays.push(await host.addImage(base64ToBlob(e.data, e.mime)));
+        } catch (err) {
+          notice = [notice, `An image wasn't kept: ${(err as Error)?.message ?? err}`].filter(Boolean).join(" ");
+        }
+      }
       shown = { events, ranFor };
-      save(outputText(events), ranFor);
+      save(outputText(events), ranFor, displays);
       renderOutput();
       renderControls();
       if (!restarted) status.textContent = `${ok ? "Done" : "Failed"} in ${Math.round(performance.now() - started)} ms`;
@@ -337,6 +408,7 @@ function nodeView(host: RunnableHost) {
       destroy() {
         running?.abort.abort();
         running = null;
+        showImages([]);
       },
     };
   };
@@ -363,6 +435,7 @@ export function runnableCode(host: RunnableHost) {
         runnableId: { default: null, parseHTML: (e) => e.getAttribute("data-runnable-id"), renderHTML: (a) => ({ "data-runnable-id": a.runnableId }) },
         output: { default: null, rendered: false },
         outputFor: { default: null, rendered: false },
+        displays: { default: [], rendered: false },
       };
     },
     parseHTML() {
@@ -384,7 +457,13 @@ export function runnableCode(host: RunnableHost) {
       const t = token as unknown as RunnableToken;
       return helpers.createNode(
         RUNNABLE_NODE,
-        { language: t.language, runnableId: t.runnableId, output: t.output, outputFor: t.output != null ? codeFingerprint(t.language, t.code) : null },
+        {
+          language: t.language,
+          runnableId: t.runnableId,
+          output: t.output,
+          displays: t.displays,
+          outputFor: t.output != null || t.displays.length ? codeFingerprint(t.language, t.code) : null,
+        },
         t.code ? [helpers.createTextNode(t.code)] : [],
       );
     },

@@ -3,7 +3,9 @@ import { browserSandbox } from "../../dist/sandbox/browser/index.js";
 
 import * as sucrase from "sucrase";
 
-const sandbox = browserSandbox({ runTimeoutMs: 5000, idleTimeoutMs: false, typescript: async () => sucrase });
+const sandbox = browserSandbox({ runTimeoutMs: 30_000, idleTimeoutMs: false, typescript: async () => sucrase });
+// A Sandbox with a short run timeout, for the timeout check.
+const quick = browserSandbox({ runTimeoutMs: 2000, idleTimeoutMs: false }).load();
 const clientPromise = sandbox.load();
 // A second Sandbox with Dangerous permissions granted, as reader.sandbox.permissions would.
 const granted = browserSandbox({ runTimeoutMs: 60_000, idleTimeoutMs: false }).load({
@@ -68,7 +70,9 @@ const CHECKS = [
     return [ev.at(-1)?.type === "restarted" && result(after) === '"undefined"', `${ev.map((e) => e.type).join(",")} then ${result(after)}`];
   }],
   ["JavaScript: a run that takes too long is stopped", async () => {
-    const ev = await run("javascript", "while (true) {}", "timeout");
+    const client = await quick;
+    const ev = [];
+    for await (const e of client.run({ kernel: "timeout", runnableId: "t", language: "javascript", code: "while (true) {}", codeSource: "scratchpad" })) ev.push(e);
     const last = ev.at(-1);
     return [last?.type === "restarted" && last.reason === "timeout", JSON.stringify(last)];
   }],
@@ -101,6 +105,17 @@ const CHECKS = [
     const ev = await pending;
     const after = error(await run("python", "x"));
     return [ev.at(-1)?.type === "restarted" && after?.name === "NameError", after ? `${after.name}: ${after.message}` : "x still defined"];
+  }],
+  ["Python: a matplotlib figure comes back as an image", async () => {
+    if (!has("python")) return [true, "skipped"];
+    const ev = await run("python", "import matplotlib.pyplot as plt\nplt.plot([1, 3, 2])\nplt.title('x')", "plots");
+    const d = ev.filter((e) => e.type === "display");
+    return [d.length === 1 && d[0].mime === "image/png" && d[0].data.startsWith("iVBOR"), d.length ? `${d.length} image(s), ${d[0].data.length} chars` : (error(ev)?.message?.split("\n").at(-1) ?? ev.map((e) => e.type + (e.reason ? `:${e.reason}` : "")).join(","))];
+  }],
+  ["JavaScript: display() shows a canvas as an image", async () => {
+    const ev = await run("javascript", "const c = new OffscreenCanvas(4, 4)\nc.getContext('2d').fillRect(0, 0, 4, 4)\nawait display(c)");
+    const d = ev.find((e) => e.type === "display");
+    return [d?.mime === "image/png", d ? `${d.mime}, ${d.data.length} chars` : error(ev)?.message];
   }],
   ["Permissions: none granted, fetch says the site blocked it", async () => {
     const ev = await run("javascript", "await fetch('https://cdn.jsdelivr.net/npm/acorn/package.json')");

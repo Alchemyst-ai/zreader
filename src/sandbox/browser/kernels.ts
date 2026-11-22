@@ -181,6 +181,24 @@ export function javascriptKernel(config: { network: string[] | true }) {
       post({ type: level === "warn" || level === "error" ? "stderr" : "stdout", text: args.map((a) => format(a, true)).join(" ") + "\n" });
   }
   installFetchGuard(config.network);
+  // display(x): show an image under the code. Takes an OffscreenCanvas, an image Blob or an image data URL.
+  const toBase64 = (buf: ArrayBuffer) => {
+    let bin = "";
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+  (self as unknown as { display: (x: unknown) => Promise<void> }).display = async (x: unknown) => {
+    let blob: Blob | null = null;
+    if (typeof OffscreenCanvas !== "undefined" && x instanceof OffscreenCanvas) blob = await x.convertToBlob({ type: "image/png" });
+    else if (x instanceof Blob) blob = x;
+    else if (typeof x === "string") {
+      const m = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/is.exec(x.trim());
+      if (m) return void post({ type: "display", mime: m[1]!.toLowerCase(), data: m[2]!.replace(/\s+/g, "") });
+    }
+    if (!blob || !blob.type.startsWith("image/")) throw new TypeError("display() takes an OffscreenCanvas, an image Blob or an image data URL");
+    post({ type: "display", mime: blob.type, data: toBase64(await blob.arrayBuffer()) });
+  };
   const AsyncFunction = (async () => {}).constructor as new (body: string) => () => Promise<unknown>;
   self.onmessage = async (e: MessageEvent) => {
     const m = e.data as { type: string; runId: number; code: string };
@@ -219,6 +237,23 @@ export function pythonKernel(config: { indexURL: string; network: string[] | tru
   };
   let pyodide: Promise<Py> | null = null;
   let micropipGuarded = false;
+  // Open matplotlib figures as base64 PNGs, closed afterwards (like plt.show() in a notebook).
+  const FIGURES = [
+    "def _zr_figures():",
+    "    import sys",
+    "    plt = sys.modules.get('matplotlib.pyplot')",
+    "    if plt is None:",
+    "        return []",
+    "    import io, base64",
+    "    out = []",
+    "    for n in plt.get_fignums():",
+    "        buf = io.BytesIO()",
+    "        plt.figure(n).savefig(buf, format='png', bbox_inches='tight')",
+    "        out.append(base64.b64encode(buf.getvalue()).decode())",
+    "    plt.close('all')",
+    "    return out",
+    "_zr_figures()",
+  ].join("\n");
   // micropip may only install the packages the site granted, checked by name (ADR 0005).
   const MICROPIP_GUARD = [
     "def _zr_guard():",
@@ -239,9 +274,13 @@ export function pythonKernel(config: { indexURL: string; network: string[] | tru
   const load = () => {
     if (!pyodide) {
       post({ type: "status", text: "Downloading the Python runtime (about 10 MB)…" });
-      pyodide = (import(/* webpackIgnore: true */ /* @vite-ignore */ `${config.indexURL}pyodide.mjs`) as Promise<{ loadPyodide(o: { indexURL: string }): Promise<Py> }>).then((m) =>
-        m.loadPyodide({ indexURL: config.indexURL }),
-      );
+      pyodide = (import(/* webpackIgnore: true */ /* @vite-ignore */ `${config.indexURL}pyodide.mjs`) as Promise<{ loadPyodide(o: { indexURL: string }): Promise<Py> }>)
+        .then((m) => m.loadPyodide({ indexURL: config.indexURL }))
+        .then(async (py) => {
+          // Plots render off-screen (there's no DOM in a worker); figures are sent as images after each run.
+          await py.runPythonAsync("import os\nos.environ['MPLBACKEND'] = 'agg'");
+          return py;
+        });
       pyodide.catch(() => (pyodide = null));
     }
     return pyodide;
@@ -264,7 +303,15 @@ export function pythonKernel(config: { indexURL: string; network: string[] | tru
         micropipGuarded = true;
       }
       post({ type: "started" });
-      const value = await py.runPythonAsync(m.code);
+      let value: unknown;
+      try {
+        value = await py.runPythonAsync(m.code);
+      } finally {
+        const figures = (await py.runPythonAsync(FIGURES)) as { toJs?(): unknown } | string[] | undefined;
+        const list = ((figures as { toJs?(): unknown })?.toJs?.() ?? figures ?? []) as string[];
+        for (const data of list) post({ type: "display", mime: "image/png", data });
+        (figures as { destroy?(): void } | undefined)?.destroy?.();
+      }
       if (value !== undefined) {
         const repr = py.globals.get("repr");
         post({ type: "result", text: String(repr(value)) });

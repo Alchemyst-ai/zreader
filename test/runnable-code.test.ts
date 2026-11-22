@@ -6,7 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { Marked } from "marked";
 import { describe, expect, it } from "vitest";
-import { createMemoryAdapter, createReaderStore, type RunEvent, type RunRequest, type SandboxClient, type SandboxLoader } from "../src/core/index";
+import { createMemoryAdapter, createMemoryBlobStore, createReaderStore, type RunEvent, type RunRequest, type SandboxClient, type SandboxLoader } from "../src/core/index";
 import { resolvePadFeatures } from "../src/editor/features";
 import { PAD_FEATURES } from "../src/editor/pad-features";
 import { OUTPUT_LIMIT, TRUNCATED_MARKER, markdownHasRunnable, runnableCode, type RunnableHost } from "../src/editor/runnable";
@@ -274,5 +274,63 @@ describe("RunnableCode: in the scratchpad", () => {
     await settle();
     expect(settings).toEqual([{ idleTimeoutMs: 0, runTimeoutMs: 5000, permissions: { scratchpad: { dangerousPermissions: {} } } }]);
     await act(async () => book.root.unmount());
+  });
+});
+
+describe("RunnableCode: images", () => {
+  // A 1×1 PNG.
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const plot = () => [{ type: "stdout", text: "plotted\n" }, { type: "display", mime: "image/png", data: PNG }, { type: "exit", ok: true, ms: 1 }] as RunEvent[];
+
+  it("keeps displayed images in the BlobStore and refers to them from the pad", async () => {
+    const blobs = createMemoryBlobStore();
+    const sb = fakeSandbox(plot);
+    const host = { ...sb.host, blobs, addImage: async (b: Blob) => `zr-blob:${await blobs.put(b)}` };
+    const ed = headless("```python run id=p1\nplt.plot([1, 2])\n```", host);
+    await click(view(ed), "Run");
+    await settle();
+    const [stored] = await blobs.list();
+    expect(stored).toBeDefined();
+    const md = ed.getMarkdown();
+    expect(md).toContain(`\`\`\`output for=p1\nplotted\n\`\`\`\n![output](zr-blob:${stored!.id})`);
+    expect(md).not.toContain(PNG);
+    expect(JSON.stringify(ed.getJSON())).not.toContain(PNG);
+    expect(view(ed).querySelectorAll("img.zr-runnable-display")).toHaveLength(1);
+
+    // Reloading the pad brings the image back; running again with the same plot leaves the pad alone.
+    const again = headless(md, host);
+    expect(again.getMarkdown()).toBe(md);
+    let updates = 0;
+    again.on("update", () => updates++);
+    await click(view(again), "Run");
+    await settle();
+    expect(updates).toBe(0);
+    expect(view(again).querySelectorAll("img.zr-runnable-display")).toHaveLength(1);
+    ed.destroy();
+    again.destroy();
+  });
+
+  it("drops the old image reference when a run replaces it", async () => {
+    const blobs = createMemoryBlobStore();
+    let text = "first";
+    const sb = fakeSandbox(() => [{ type: "stdout", text }, { type: "exit", ok: true, ms: 1 }]);
+    const host = { ...sb.host, blobs, addImage: async (b: Blob) => `zr-blob:${await blobs.put(b)}` };
+    const ed = headless("```python run id=p2\nx\n```\n```output for=p2\nold\n```\n![output](zr-blob:abc123)", host);
+    text = "new";
+    await click(view(ed), "Run");
+    await settle();
+    expect(ed.getMarkdown()).not.toContain("zr-blob:abc123");
+    ed.destroy();
+  });
+
+  it("shows images without a store, and says they weren't kept", async () => {
+    const sb = fakeSandbox(plot);
+    const ed = headless("```python run id=p3\nplot()\n```", sb.host);
+    await click(view(ed), "Run");
+    await settle();
+    expect(view(ed).querySelectorAll("img.zr-runnable-display")).toHaveLength(1);
+    expect(view(ed).querySelector(".zr-runnable-notice")!.textContent).toContain("aren't kept");
+    expect(ed.getMarkdown()).not.toContain("![output]");
+    ed.destroy();
   });
 });
