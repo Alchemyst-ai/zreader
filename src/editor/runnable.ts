@@ -57,7 +57,8 @@ export interface RunnableAttrs {
 /** FNV-1a fingerprint of a piece of RunnableCode, used to tell when its Output is stale. */
 export function codeFingerprint(language: string, code: string): string {
   let h = 0x811c9dc5;
-  const s = `${language}\n${code}`;
+  // Trailing blank lines don't change what the code does.
+  const s = `${language}\n${code.replace(/\s+$/, "")}`;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193);

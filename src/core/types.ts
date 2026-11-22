@@ -1,3 +1,4 @@
+import type { DangerousPermissions } from "./sandbox";
 /** Shared, framework-agnostic data model for zreader. */
 
 export type ISODate = string;
@@ -102,6 +103,23 @@ export interface ReaderSettings {
   updatedAt: ISODate;
 }
 
+/**
+ * Limits on RunnableCode. They can only narrow what the Sandbox the app
+ * provides may do: without a Sandbox, RunnableCode is off whatever is set here.
+ */
+export interface SandboxOptions {
+  /** Where RunnableCode in each kind of pad runs: `"browser"`, or `false` to show it as plain code. */
+  scopes: Record<PadScopeKind, "browser" | false>;
+  kernel: {
+    /** A Kernel with no run for this long is shut down. `0` or `false`: never. Default 15 minutes. */
+    idleTimeoutMs: number | false;
+    /** A run longer than this is stopped. `false`: no limit. Default 30 seconds. */
+    runTimeoutMs: number | false;
+  };
+  /** Dangerous permissions, granted only here, per codeSource. All off by default. */
+  permissions: { scratchpad: { dangerousPermissions: DangerousPermissions } };
+}
+
 /** Serializable client options (the `reader` half of reader.config.ts). */
 export interface ReaderClientOptions {
   storagePrefix: string;
@@ -127,6 +145,8 @@ export interface ReaderClientOptions {
   backupReminder: boolean;
   /** Base path used to build links back into the reader (e.g. quote-to-pad). */
   basePath: string;
+  /** RunnableCode limits; see `SandboxOptions`. */
+  sandbox: SandboxOptions;
 }
 
 export interface TocEntry {

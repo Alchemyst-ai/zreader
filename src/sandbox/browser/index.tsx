@@ -9,7 +9,7 @@
  * data, and can't reach the network unless the site grants it (ADR 0001).
  */
 import { useMemo, useRef } from "react";
-import type { SandboxLanguage, SandboxLoader } from "zreader";
+import type { SandboxLanguage, SandboxLoader, SandboxSettings } from "zreader";
 import { useRegisterSandbox } from "zreader/react";
 import { KernelHost, isFrameHandshake } from "./host";
 import { frameMain, javascriptKernel, pythonKernel, sourceOf } from "./kernels";
@@ -18,9 +18,9 @@ import { rewriteJavaScript } from "./rewrite";
 export interface BrowserSandboxOptions {
   /** Languages to offer. Defaults to every language this Sandbox runs. */
   languages?: SandboxLanguage[];
-  /** A run longer than this is stopped and its Kernel restarted. Default 30 s; `false`: no limit. */
+  /** A run longer than this is stopped and its Kernel restarted. Overrides `reader.sandbox.kernel.runTimeoutMs` (default 30 s); `false`: no limit. */
   runTimeoutMs?: number | false;
-  /** A Kernel with no run for this long is shut down. Default 15 minutes; `0` or `false`: never. */
+  /** A Kernel with no run for this long is shut down. Overrides `reader.sandbox.kernel.idleTimeoutMs` (default 15 minutes); `0` or `false`: never. */
   idleTimeoutMs?: number | false;
   /**
    * Where Pyodide (the Python runtime) is loaded from: a folder with `pyodide.mjs`,
@@ -132,12 +132,12 @@ export function browserSandbox(options: BrowserSandboxOptions = {}): SandboxLoad
   const languages = (options.languages ?? BROWSER_LANGUAGES).filter((l) => BROWSER_LANGUAGES.includes(l) && (l !== "typescript" || !!options.typescript));
   return {
     languages,
-    load: async () =>
+    load: async (settings?: Partial<SandboxSettings>) =>
       new KernelHost({
         languages,
         prepare: preparer(options.typescript),
-        runTimeoutMs: options.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
-        idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+        runTimeoutMs: options.runTimeoutMs ?? settings?.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS,
+        idleTimeoutMs: options.idleTimeoutMs ?? settings?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
         openFrame: () => openFrame(frameConfig({ ...options, languages })),
       }),
   };

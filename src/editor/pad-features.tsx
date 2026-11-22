@@ -1,6 +1,6 @@
 /** The scratchpad's optional features, in toolbar order. RunnableCode joins this list. */
 import { SigmaIcon, SquareTerminalIcon } from "lucide-react";
-import { TAB_ID, padKeySuffix, type MathLoader, type PadScope, type SandboxConnection } from "zreader";
+import { TAB_ID, padKeySuffix, type MathLoader, type PadScope, type SandboxConnection, type SandboxOptions } from "zreader";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PadFeature } from "./features";
@@ -11,6 +11,8 @@ import { RUNNABLE_NODE, markdownHasRunnable, runnableCode } from "./runnable";
 export interface PadFeatureContext {
   mathLoader: MathLoader | null;
   sandbox: SandboxConnection | null;
+  /** Where RunnableCode in each kind of pad runs (`reader.sandbox.scopes`). */
+  sandboxScopes: SandboxOptions["scopes"];
   /** The pad being edited: RunnableCode gets one Kernel per pad (and language) in this tab. */
   scope: PadScope;
 }
@@ -49,8 +51,10 @@ const runnable: PadFeature<PadFeatureContext> = {
   name: "runnable",
   nodeTypes: [RUNNABLE_NODE],
   markdownHas: markdownHasRunnable,
-  activate: ({ sandbox, scope }) =>
-    sandbox && {
+  activate: ({ sandbox, sandboxScopes, scope }) =>
+    !sandbox || sandboxScopes[scope.kind] !== "browser"
+      ? null
+      : {
       extensions: [
         runnableCode({
           languages: sandbox.languages,

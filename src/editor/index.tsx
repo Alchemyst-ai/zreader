@@ -300,9 +300,15 @@ export function ScratchpadEditor({ scope, placeholder = "Jot notes, ideas and to
 
   const mathLoader = useMathLoader();
   const sandbox = useSandbox();
+  const { options } = useReader();
   const scopeId = padKeySuffix(scope);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const features = useMemo(() => resolvePadFeatures({ mathLoader, sandbox, scope }, PAD_FEATURES), [mathLoader, sandbox, scopeId]);
+  const sandboxScopes = options.sandbox.scopes;
+  const scopesKey = JSON.stringify(sandboxScopes);
+  const features = useMemo(
+    () => resolvePadFeatures({ mathLoader, sandbox, sandboxScopes, scope }, PAD_FEATURES),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mathLoader, sandbox, scopeId, scopesKey],
+  );
   const initial = features.contentFor(pad);
   const editor = useEditor({
     immediatelyRender: false,

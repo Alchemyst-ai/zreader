@@ -161,6 +161,9 @@ describe("RunnableCode: running", () => {
     expect(ed.state.doc.firstChild!.textContent).toBe("1+1");
     expect(view(ed).dataset.stale).toBe("true");
     expect(ed.getMarkdown()).toContain("```output for=g7\nran 1\n```");
+    // Blank lines at the end don't make it stale.
+    ed.commands.setContent("```python run id=g7\n1\n\n\n```\n```output for=g7\nran 1\n```", { contentType: "markdown" });
+    expect(view(ed).dataset.stale).toBe("false");
     ed.destroy();
   });
 
@@ -198,13 +201,15 @@ describe("RunnableCode: running", () => {
   });
 });
 
+const ALL = { global: "browser", book: "browser", chapter: "browser" } as const;
+
 describe("RunnableCode: in the scratchpad", () => {
   const pad = { markdown: SOURCE, json: { type: "doc", content: [{ type: "runnableCode", attrs: { language: "python" } }] }, updatedAt: "" };
 
   it("ignores cached JSON with RunnableCode when there is no Sandbox", () => {
     const sandbox = { languages: ["python" as const], client: async () => fakeSandbox(echo).client, dispose() {} };
-    expect(resolvePadFeatures({ mathLoader: null, sandbox: null, scope: { kind: "global" } }, PAD_FEATURES).contentFor(pad).contentType).toBe("markdown");
-    expect(resolvePadFeatures({ mathLoader: null, sandbox, scope: { kind: "global" } }, PAD_FEATURES).contentFor(pad).contentType).toBe("json");
+    expect(resolvePadFeatures({ mathLoader: null, sandbox: null, sandboxScopes: ALL, scope: { kind: "global" } }, PAD_FEATURES).contentFor(pad).contentType).toBe("markdown");
+    expect(resolvePadFeatures({ mathLoader: null, sandbox, sandboxScopes: ALL, scope: { kind: "global" } }, PAD_FEATURES).contentFor(pad).contentType).toBe("json");
   });
 
   it("offers RunnableCode in the toolbar only when the provider has a Sandbox", async () => {
@@ -238,5 +243,36 @@ describe("RunnableCode: in the scratchpad", () => {
     expect(off.el.querySelector(".zr-runnable")).toBeNull();
     expect(off.el.textContent).toContain("x = 41");
     await act(async () => off.root.unmount());
+  });
+
+  it("follows the site's limits: scopes turned off show plain code, and the Kernel gets the timeouts", async () => {
+    const { ReaderProvider } = await import("../src/react/index");
+    const { ScratchpadEditor } = await import("../src/editor/index");
+    const store = createReaderStore({ adapter: createMemoryAdapter(), writeDelay: 0 });
+    const fake = fakeSandbox(echo);
+    const settings: unknown[] = [];
+    const loader: SandboxLoader = { languages: ["python"], load: async (s) => (settings.push(s), fake.client) };
+    const options = { sandbox: { scopes: { global: false as const }, kernel: { idleTimeoutMs: 0, runTimeoutMs: 5000 } } };
+    const mount = async (scope: { kind: "global" } | { kind: "book"; bookId: string }) => {
+      store.savePad(scope, SOURCE);
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const root = createRoot(el);
+      await act(async () => root.render(h(ReaderProvider, { store, sandbox: loader, options, manageTheme: false, toaster: false, children: h(ScratchpadEditor, { scope }) })));
+      await settle();
+      return { el, root };
+    };
+
+    const global = await mount({ kind: "global" });
+    expect(global.el.querySelector(".zr-runnable")).toBeNull();
+    expect(global.el.querySelector('button[aria-label="Insert runnable code"]')).toBeNull();
+    expect(global.el.textContent).toContain("x = 41");
+    await act(async () => global.root.unmount());
+
+    const book = await mount({ kind: "book", bookId: "guide" });
+    await click(book.el.querySelector(".zr-runnable")!, "Run");
+    await settle();
+    expect(settings).toEqual([{ idleTimeoutMs: 0, runTimeoutMs: 5000, permissions: { scratchpad: { dangerousPermissions: {} } } }]);
+    await act(async () => book.root.unmount());
   });
 });

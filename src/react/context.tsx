@@ -190,7 +190,13 @@ export function ReaderProvider({
   const sandboxLoader = sandboxProp ?? registeredSandbox;
   const setSandbox = useCallback((l: SandboxLoader | null) => setRegisteredSandbox(() => l), []);
   // The provider owns the connection: one client per loader, disposed when the loader goes away.
-  const sandbox = useMemo(() => (sandboxLoader ? connectSandbox(sandboxLoader) : null), [sandboxLoader]);
+  // A change of settings (e.g. another shelf's) restarts the Kernels with the new ones.
+  const sandboxSettings = JSON.stringify([resolved.sandbox.kernel, resolved.sandbox.permissions]);
+  const sandbox = useMemo(() => {
+    if (!sandboxLoader) return null;
+    const [kernel, permissions] = JSON.parse(sandboxSettings) as [ReaderClientOptions["sandbox"]["kernel"], ReaderClientOptions["sandbox"]["permissions"]];
+    return connectSandbox(sandboxLoader, { ...kernel, permissions });
+  }, [sandboxLoader, sandboxSettings]);
   useEffect(() => () => sandbox?.dispose(), [sandbox]);
   const library = useMemo<Library>(() => {
     const list = books ?? [];

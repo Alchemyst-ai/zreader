@@ -55,13 +55,31 @@ export interface SandboxClient {
   dispose(): void;
 }
 
+/** Abilities a Sandbox doesn't have unless the site owner grants them (`reader.sandbox.permissions`). */
+export interface DangerousPermissions {
+  /** Origins code may reach (`fetch`, imports), or `true` for any. */
+  network?: string[] | true;
+  /** Python packages `micropip` may install, by name. */
+  packages?: string[];
+}
+
+/** What the site's config tells a Sandbox, passed to `SandboxLoader.load`. */
+export interface SandboxSettings {
+  /** A run longer than this is stopped. `false`: no limit. */
+  runTimeoutMs: number | false;
+  /** A Kernel with no run for this long is shut down. `0` or `false`: never. */
+  idleTimeoutMs: number | false;
+  permissions: { scratchpad: { dangerousPermissions: DangerousPermissions } };
+}
+
 /**
  * How a Sandbox is offered to the reader: the languages it supports, known up
  * front for the editor, and a `load()` that creates the client on first run.
  */
 export interface SandboxLoader {
   readonly languages: readonly SandboxLanguage[];
-  load(): Promise<SandboxClient>;
+  /** Creates the client, applying the site's settings (options passed to the Sandbox itself win). */
+  load(settings: SandboxSettings): Promise<SandboxClient>;
 }
 
 /** A loader with its client loaded once and shared; `dispose()` frees the client. */
@@ -72,7 +90,7 @@ export interface SandboxConnection {
 }
 
 /** Loads the client on first use and shares it. The owner (the provider) calls `dispose()`. */
-export function connectSandbox(loader: SandboxLoader): SandboxConnection {
+export function connectSandbox(loader: SandboxLoader, settings: SandboxSettings): SandboxConnection {
   let pending: Promise<SandboxClient> | null = null;
   let disposed = false;
   return {
@@ -80,7 +98,7 @@ export function connectSandbox(loader: SandboxLoader): SandboxConnection {
     client() {
       if (disposed) return Promise.reject(new Error("zreader: the Sandbox was disposed"));
       if (!pending) {
-        pending = loader.load();
+        pending = loader.load(settings);
         pending.catch(() => (pending = null));
       }
       return pending;

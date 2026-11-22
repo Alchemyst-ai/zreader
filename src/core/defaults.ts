@@ -19,4 +19,9 @@ export const DEFAULT_CLIENT_OPTIONS: ReaderClientOptions = {
   progress: { completeAt: 0.9, saveIntervalMs: 1000 },
   backupReminder: true,
   basePath: "/books",
+  sandbox: {
+    scopes: { global: "browser", book: "browser", chapter: "browser" },
+    kernel: { idleTimeoutMs: 15 * 60_000, runTimeoutMs: 30_000 },
+    permissions: { scratchpad: { dangerousPermissions: {} } },
+  },
 };
